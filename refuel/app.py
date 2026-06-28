@@ -1,15 +1,16 @@
 """Refuel GUI - 다크 트레이 앱.
 
-- 순수 Tkinter 다크 창 (Consolas 통일) — 재충전 카운트다운 + 사용량 카드 + 일별 사용량
+- 순수 Tkinter 다크 창 — 폰트 자동선택(한글+숫자 통일), 재충전 카운트다운 + 사용량 + 일별
 - pystray 트레이 상주 (창 닫으면 트레이로, 우클릭 종료로만 완전 종료)
 - winotify 토스트 알림 (재충전 완료 / 리셋 임박 / 사용량 경고)
-- 설정창 (강조색 / 트레이동작 / 자동시작 / 플랜한도 / 주간리셋)
+- 설정창 (강조색 / 트레이동작 / 자동시작 / 주간리셋). 한도는 자동 추정이라 입력칸 없음.
 """
 import os
 import sys
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 from datetime import datetime, timezone
 
 from . import core
@@ -25,7 +26,7 @@ WARN = "#f5c451"
 DNG = "#f3766b"
 BLU = "#5a8dee"
 
-F = "Consolas"
+F = "Malgun Gothic"   # __init__에서 자동선택으로 덮어씀
 REFRESH_SECONDS = 20
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 
@@ -51,6 +52,19 @@ except Exception:
 
 _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _APP_NAME = "Refuel"
+
+
+def _pick_font(root):
+    """한글+숫자가 한 폰트로 통일되도록 선택. 한글 코딩폰트가 있으면 우선."""
+    try:
+        fams = set(tkfont.families(root))
+    except Exception:
+        return "Malgun Gothic"
+    for p in ("D2Coding", "NanumGothicCoding", "Nanum Gothic Coding",
+              "Sarasa Mono K", "Malgun Gothic", "맑은 고딕", "Consolas"):
+        if p in fams:
+            return p
+    return "Malgun Gothic"
 
 
 def _notify(title, msg):
@@ -116,6 +130,8 @@ class RefuelApp:
         self.tray = None
 
         self.root = tk.Tk()
+        global F
+        F = _pick_font(self.root)
         self.root.title("Refuel")
         self.root.configure(bg=BG)
         self.root.geometry("520x600")
@@ -131,7 +147,7 @@ class RefuelApp:
     def _card(self, parent, label):
         f = tk.Frame(parent, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         tk.Label(f, text=label, bg=PANEL, fg=MUT, font=(F, 9)).pack(anchor="w", padx=14, pady=(11, 0))
-        val = tk.Label(f, text="0", bg=PANEL, fg=TX, font=(F, 18, "bold"))
+        val = tk.Label(f, text="0", bg=PANEL, fg=TX, font=(F, 17, "bold"))
         val.pack(anchor="w", padx=14, pady=(2, 0))
         sub = tk.Label(f, text="", bg=PANEL, fg=MUT, font=(F, 8))
         sub.pack(anchor="w", padx=14, pady=(0, 10))
@@ -147,14 +163,17 @@ class RefuelApp:
         tk.Button(top, text="⚙", bg=PANEL, fg=TX, font=(F, 11), bd=0, relief="flat",
                   activebackground=BORDER, activeforeground=TX, cursor="hand2",
                   command=self._open_settings).pack(side="right", padx=(8, 0))
-        self.meta = tk.Label(top, text="", bg=BG, fg=MUT, font=(F, 10))
+        self.meta = tk.Label(top, text="", bg=BG, fg=MUT, font=(F, 9))
         self.meta.pack(side="right")
 
+        self.agents = tk.Label(wrap, text="", bg=BG, fg=MUT, font=(F, 8), anchor="w")
+        self.agents.pack(fill="x", pady=(6, 0))
+
         hero = tk.Frame(wrap, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        hero.pack(fill="x", pady=(14, 12))
+        hero.pack(fill="x", pady=(8, 12))
         self.hlabel = tk.Label(hero, text="재충전까지", bg=PANEL, fg=MUT, font=(F, 9))
         self.hlabel.pack(anchor="w", padx=18, pady=(16, 2))
-        self.count = tk.Label(hero, text="--:--:--", bg=PANEL, fg=TX, font=(F, 46, "bold"))
+        self.count = tk.Label(hero, text="--:--:--", bg=PANEL, fg=TX, font=(F, 44, "bold"))
         self.count.pack(anchor="w", padx=16)
         self.sub = tk.Label(hero, text="", bg=PANEL, fg=MUT, font=(F, 10))
         self.sub.pack(anchor="w", padx=18, pady=(6, 4))
@@ -201,7 +220,7 @@ class RefuelApp:
             _notify("리셋 임박", f"{b['remaining_sec'] // 60}분 뒤 윈도우 리셋. 마무리 정리해.")
             ns["warned_soon"] = True
         if b["ratio"] is not None and b["ratio"] >= core.CONFIG["warn_ratio"] and not ns["warned_ratio"]:
-            _notify("사용량 경고", f"이번 윈도우 {int(b['ratio'] * 100)}% 사용. 곧 끊길 수 있어.")
+            _notify("사용량 경고", f"이번 윈도우가 평소 최대의 {int(b['ratio'] * 100)}%. 곧 끊길 수 있어.")
             ns["warned_ratio"] = True
 
     def _worker(self):
@@ -217,6 +236,8 @@ class RefuelApp:
         with self.lock:
             s = dict(self.state)
         acc = core.CONFIG["accent"]
+        ag = s.get("agents", [])
+        self.agents.config(text="감지된 에이전트 · " + (", ".join(a["name"] for a in ag) if ag else "없음"))
         self.meta.config(text=f"{'알림 ON' if _HAVE_TOAST else '알림 OFF'} · 이벤트 {_fmt_n(s.get('total_events'))}")
         b = s.get("block")
         w = max(self.bar.winfo_width(), 1)
@@ -235,7 +256,7 @@ class RefuelApp:
             col = DNG if over else (WARN if soon else acc)
             self.hlabel.config(text="재충전까지")
             self.count.config(text=_fmt_dur(remaining), fg=col)
-            extra = f" · 한도 {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
+            extra = f" · 추정한도 {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
             self.sub.config(text=f"리셋 {b['reset_at'].strftime('%H:%M')} · 윈도우 {_fmt_n(b['tokens'])} 토큰{extra}")
             self.v_cw.config(text=_fmt_n(b["tokens"]))
             self.bar.create_rectangle(0, 0, int(w * ratio), 8, fill=col, width=0)
@@ -261,7 +282,7 @@ class RefuelApp:
             row = tk.Frame(self.daily, bg=PANEL)
             row.pack(fill="x", pady=3)
             tag = "오늘" if d == today else f"{d.month:02d}/{d.day:02d} {_WD[d.weekday()]}"
-            tk.Label(row, text=tag, bg=PANEL, fg=TX, font=(F, 9), width=10, anchor="w").pack(side="left")
+            tk.Label(row, text=tag, bg=PANEL, fg=TX, font=(F, 9), width=9, anchor="w").pack(side="left")
             tk.Label(row, text=_fmt_short(v), bg=PANEL, fg=MUT, font=(F, 9), width=7, anchor="e").pack(side="right")
             track = tk.Canvas(row, height=7, bg=TRACK, highlightthickness=0)
             track.pack(side="left", fill="x", expand=True, padx=8)
@@ -278,28 +299,11 @@ class RefuelApp:
         win = tk.Toplevel(self.root, bg=BG)
         self._settings_win = win
         win.title("Refuel 설정")
-        win.geometry("360x440")
+        win.geometry("340x320")
         win.configure(padx=20, pady=18)
         cfg = core.CONFIG
 
-        def label(t):
-            tk.Label(win, text=t, bg=BG, fg=MUT, font=(F, 9)).pack(anchor="w", pady=(10, 2))
-
-        def entry(val):
-            e = tk.Entry(win, bg=PANEL, fg=TX, insertbackground=TX, relief="flat",
-                         font=(F, 10), highlightbackground=BORDER, highlightthickness=1)
-            e.insert(0, "" if val is None else str(val))
-            e.pack(fill="x", ipady=4)
-            return e
-
-        label("플랜 한도 (토큰, 비우면 없음)")
-        e_limit = entry(cfg["block_token_limit"])
-        label("사용량 경고 (%)")
-        e_warn = entry(int(cfg["warn_ratio"] * 100))
-        label("리셋 임박 알림 (분)")
-        e_soon = entry(cfg["reset_soon_min"])
-
-        label("주간 리셋")
+        tk.Label(win, text="주간 리셋", bg=BG, fg=MUT, font=(F, 9)).pack(anchor="w", pady=(2, 2))
         wkrow = tk.Frame(win, bg=BG)
         wkrow.pack(fill="x")
         dow_var = tk.StringVar(value=_WD[cfg["weekly_reset_dow"]])
@@ -320,12 +324,12 @@ class RefuelApp:
         def check(t, var):
             tk.Checkbutton(win, text=t, variable=var, bg=BG, fg=TX, font=(F, 9),
                            selectcolor=PANEL, activebackground=BG, activeforeground=TX,
-                           bd=0, highlightthickness=0).pack(anchor="w", pady=(8, 0))
+                           bd=0, highlightthickness=0).pack(anchor="w", pady=(10, 0))
 
         check("창 닫으면 트레이로 (우클릭 종료로만 완전 종료)", tray_var)
         check("윈도우 시작 시 자동 실행", auto_var)
 
-        label("강조 색상")
+        tk.Label(win, text="강조 색상", bg=BG, fg=MUT, font=(F, 9)).pack(anchor="w", pady=(12, 2))
         accrow = tk.Frame(win, bg=BG)
         accrow.pack(anchor="w")
         acc_var = tk.StringVar(value=cfg["accent"])
@@ -335,10 +339,6 @@ class RefuelApp:
 
         def save():
             try:
-                lim = e_limit.get().strip().replace(",", "")
-                cfg["block_token_limit"] = int(lim) if lim else None
-                cfg["warn_ratio"] = max(0.0, min(1.0, float(e_warn.get()) / 100))
-                cfg["reset_soon_min"] = max(1, int(e_soon.get()))
                 cfg["weekly_reset_dow"] = _WD.index(dow_var.get())
                 cfg["weekly_reset_hour"] = max(0, min(23, int(e_hour.get())))
             except ValueError:
