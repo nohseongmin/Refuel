@@ -1,9 +1,8 @@
-"""Refuel GUI - 다크 트레이 앱.
+"""Refuel GUI - 다크 트레이 앱 (에이전트별 아코디언 카드).
 
-- 순수 Tkinter 다크 창 — 폰트 자동선택(한글+숫자 통일), 재충전 카운트다운 + 사용량 + 일별
-- pystray 트레이 상주 (창 닫으면 트레이로, 우클릭 종료로만 완전 종료)
-- winotify 토스트 알림 (재충전 완료 / 리셋 임박 / 사용량 경고)
-- 설정창 (강조색 / 트레이동작 / 자동시작 / 주간리셋). 한도는 자동 추정이라 입력칸 없음.
+- 에이전트별 카드 스택: 접힌 상태=한 줄(이름·미니게이지·리셋), 클릭하면 펼쳐져 상세
+- 폰트 자동선택(한글+숫자 통일), 한도 자동추정, 로그 위치 자동탐지
+- pystray 트레이 상주(닫으면 트레이로, 우클릭 종료로만 완전 종료) + winotify 토스트
 """
 import os
 import sys
@@ -18,6 +17,7 @@ from . import core
 # ---------------- 팔레트 ----------------
 BG = "#0d0f14"
 PANEL = "#141821"
+CARD = "#11151d"
 BORDER = "#252c3a"
 TRACK = "#0a0c11"
 TX = "#e7eaf0"
@@ -55,7 +55,6 @@ _APP_NAME = "Refuel"
 
 
 def _pick_font(root):
-    """한글+숫자가 한 폰트로 통일되도록 선택. 한글 코딩폰트가 있으면 우선."""
     try:
         fams = set(tkfont.families(root))
     except Exception:
@@ -121,12 +120,151 @@ def _fmt_short(v):
     return str(v)
 
 
+class AgentCard:
+    """에이전트 1개 카드 (접힘=헤더 한 줄, 펼침=상세)."""
+
+    def __init__(self, app, parent, aid, name):
+        self.app, self.id, self.name = app, aid, name
+        self.expanded = False
+        self.reset_at = None
+        self.usage_ratio = None
+        self.has_block = False
+
+        self.outer = tk.Frame(parent, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        self.outer.pack(fill="x", pady=(0, 10))
+
+        h = tk.Frame(self.outer, bg=PANEL, cursor="hand2")
+        h.pack(fill="x")
+        self.chev = tk.Label(h, text="▸", bg=PANEL, fg=MUT, font=(F, 10), width=2)
+        self.chev.pack(side="left", padx=(8, 0), pady=9)
+        self.dot = tk.Label(h, text="●", bg=PANEL, fg=app.accent(), font=(F, 10))
+        self.dot.pack(side="left")
+        self.name_lbl = tk.Label(h, text=name, bg=PANEL, fg=TX, font=(F, 11, "bold"))
+        self.name_lbl.pack(side="left", padx=6)
+        self.hcount = tk.Label(h, text="--:--:--", bg=PANEL, fg=MUT, font=(F, 11))
+        self.hcount.pack(side="right", padx=14)
+        for wdg in (h, self.chev, self.dot, self.name_lbl, self.hcount):
+            wdg.bind("<Button-1>", lambda e: self.app.toggle(self.id))
+
+        self.hbar = tk.Canvas(self.outer, height=4, bg=TRACK, highlightthickness=0)
+        self.hbar.pack(fill="x", padx=12, pady=(0, 10))
+
+        self.detail = tk.Frame(self.outer, bg=PANEL)
+        self._build_detail()
+
+    def _mkcard(self, parent, label, col):
+        f = tk.Frame(parent, bg=CARD)
+        f.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else 6, 0))
+        tk.Label(f, text=label, bg=CARD, fg=MUT, font=(F, 8)).pack(anchor="w", padx=10, pady=(8, 0))
+        val = tk.Label(f, text="0", bg=CARD, fg=TX, font=(F, 15, "bold"))
+        val.pack(anchor="w", padx=10, pady=(1, 0))
+        sub = tk.Label(f, text="", bg=CARD, fg=MUT, font=(F, 8))
+        sub.pack(anchor="w", padx=10, pady=(0, 8))
+        return val, sub
+
+    def _build_detail(self):
+        d = self.detail
+        self.count = tk.Label(d, text="--:--:--", bg=PANEL, fg=TX, font=(F, 38, "bold"))
+        self.count.pack(anchor="w", padx=16, pady=(2, 0))
+        self.sub = tk.Label(d, text="", bg=PANEL, fg=MUT, font=(F, 10))
+        self.sub.pack(anchor="w", padx=16, pady=(4, 4))
+        self.bar = tk.Canvas(d, height=8, bg=TRACK, highlightthickness=0)
+        self.bar.pack(fill="x", padx=16, pady=(2, 12))
+        grid = tk.Frame(d, bg=PANEL)
+        grid.pack(fill="x", padx=12)
+        self.cw_val, _ = self._mkcard(grid, "현재 윈도우", 0)
+        self.today_val, _ = self._mkcard(grid, "오늘", 1)
+        self.week_val, self.week_sub = self._mkcard(grid, "이번 주", 2)
+        for i in range(3):
+            grid.columnconfigure(i, weight=1)
+        tk.Label(d, text="최근 7일", bg=PANEL, fg=MUT, font=(F, 9)).pack(anchor="w", padx=16, pady=(12, 4))
+        self.daily = tk.Frame(d, bg=PANEL)
+        self.daily.pack(fill="x", padx=16, pady=(0, 12))
+
+    def set_expanded(self, val):
+        self.expanded = val
+        self.chev.config(text="▾" if val else "▸")
+        if val:
+            self.detail.pack(fill="x")
+        else:
+            self.detail.pack_forget()
+
+    def update(self, a):
+        b = a["block"]
+        self.has_block = b is not None
+        if b:
+            self.reset_at = b["reset_at"]
+            self.usage_ratio = b["ratio"]
+            self.cw_val.config(text=_fmt_n(b["tokens"]))
+            extra = f" · 추정한도 {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
+            self.sub.config(text=f"리셋 {b['reset_at'].strftime('%H:%M')} · 윈도우 {_fmt_n(b['tokens'])} 토큰{extra}")
+        else:
+            self.reset_at = None
+            self.usage_ratio = None
+            self.cw_val.config(text="0")
+            self.sub.config(text="활성 윈도우 없음 - 지금 바로 사용 가능")
+        self.today_val.config(text=_fmt_n(a["today_tokens"]))
+        self.week_val.config(text=_fmt_n(a["week_tokens"]))
+        wr = a.get("weekly_reset")
+        if wr:
+            days = a.get("weekly_remaining_sec", 0) // 86400
+            self.week_sub.config(text=f"리셋 {_WD[wr.weekday()]} {wr.strftime('%H:%M')} · D-{days}")
+        self._render_daily(a.get("daily", []))
+
+    def _render_daily(self, daily):
+        for ch in self.daily.winfo_children():
+            ch.destroy()
+        if not daily:
+            return
+        mx = max((v for _, v in daily), default=1) or 1
+        today = datetime.now().astimezone().date()
+        for d, v in reversed(daily):
+            row = tk.Frame(self.daily, bg=PANEL)
+            row.pack(fill="x", pady=3)
+            tag = "오늘" if d == today else f"{d.month:02d}/{d.day:02d} {_WD[d.weekday()]}"
+            tk.Label(row, text=tag, bg=PANEL, fg=TX, font=(F, 9), width=9, anchor="w").pack(side="left")
+            tk.Label(row, text=_fmt_short(v), bg=PANEL, fg=MUT, font=(F, 9), width=7, anchor="e").pack(side="right")
+            tr = tk.Canvas(row, height=7, bg=TRACK, highlightthickness=0)
+            tr.pack(side="left", fill="x", expand=True, padx=8)
+            tr.update_idletasks()
+            tw = max(tr.winfo_width(), 1)
+            col = self.app.accent() if d == today else BLU
+            tr.create_rectangle(0, 0, int(tw * (v / mx)), 7, fill=col, width=0)
+
+    def tick(self):
+        acc = self.app.accent()
+        self.dot.config(fg=acc)
+        if not self.has_block:
+            self.hcount.config(text="완충", fg=acc)
+            self.count.config(text="완충", fg=acc)
+            self.hbar.delete("all")
+            self.bar.delete("all")
+            return
+        now = datetime.now(timezone.utc).astimezone()
+        rem = max(0, int((self.reset_at - now).total_seconds()))
+        prog = min(1.0, (18000 - rem) / 18000)
+        soon = rem <= core.CONFIG["reset_soon_min"] * 60
+        over = self.usage_ratio is not None and self.usage_ratio >= core.CONFIG["warn_ratio"]
+        col = DNG if over else (WARN if soon else acc)
+        self.hcount.config(text=_fmt_dur(rem), fg=col)
+        self.count.config(text=_fmt_dur(rem), fg=col)
+        w = max(self.bar.winfo_width(), 1)
+        self.bar.delete("all")
+        self.bar.create_rectangle(0, 0, int(w * prog), 8, fill=col, width=0)
+        uw = max(self.hbar.winfo_width(), 1)
+        self.hbar.delete("all")
+        self.hbar.create_rectangle(0, 0, int(uw * min(1.0, self.usage_ratio or 0)), 4, fill=col, width=0)
+
+
 class RefuelApp:
     def __init__(self):
         core.load_config()
         self.state = {}
         self.lock = threading.Lock()
-        self._ns = {"last_start": None, "warned_ratio": False, "warned_soon": False}
+        self._ns = {}        # agent_id -> 알림 상태
+        self.cards = {}
+        self._card_order = []
+        self.expanded_id = None
         self.tray = None
 
         self.root = tk.Tk()
@@ -134,8 +272,8 @@ class RefuelApp:
         F = _pick_font(self.root)
         self.root.title("Refuel")
         self.root.configure(bg=BG)
-        self.root.geometry("520x600")
-        self.root.minsize(480, 560)
+        self.root.geometry("500x640")
+        self.root.minsize(460, 420)
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -143,85 +281,58 @@ class RefuelApp:
         threading.Thread(target=self._worker, daemon=True).start()
         self._tick()
 
-    # ---------- UI ----------
-    def _card(self, parent, label):
-        f = tk.Frame(parent, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        tk.Label(f, text=label, bg=PANEL, fg=MUT, font=(F, 9)).pack(anchor="w", padx=14, pady=(11, 0))
-        val = tk.Label(f, text="0", bg=PANEL, fg=TX, font=(F, 17, "bold"))
-        val.pack(anchor="w", padx=14, pady=(2, 0))
-        sub = tk.Label(f, text="", bg=PANEL, fg=MUT, font=(F, 8))
-        sub.pack(anchor="w", padx=14, pady=(0, 10))
-        return f, val, sub
+    def accent(self):
+        return core.CONFIG["accent"]
 
+    # ---------- UI ----------
     def _build_ui(self):
         wrap = tk.Frame(self.root, bg=BG)
         wrap.pack(fill="both", expand=True, padx=18, pady=16)
-
         top = tk.Frame(wrap, bg=BG)
-        top.pack(fill="x")
-        tk.Label(top, text="● Refuel", bg=BG, fg=core.CONFIG["accent"], font=(F, 13, "bold")).pack(side="left")
+        top.pack(fill="x", pady=(0, 12))
+        tk.Label(top, text="● Refuel", bg=BG, fg=self.accent(), font=(F, 13, "bold")).pack(side="left")
         tk.Button(top, text="⚙", bg=PANEL, fg=TX, font=(F, 11), bd=0, relief="flat",
                   activebackground=BORDER, activeforeground=TX, cursor="hand2",
                   command=self._open_settings).pack(side="right", padx=(8, 0))
         self.meta = tk.Label(top, text="", bg=BG, fg=MUT, font=(F, 9))
         self.meta.pack(side="right")
-
-        self.agents = tk.Label(wrap, text="", bg=BG, fg=MUT, font=(F, 8), anchor="w")
-        self.agents.pack(fill="x", pady=(6, 0))
-
-        hero = tk.Frame(wrap, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        hero.pack(fill="x", pady=(8, 12))
-        self.hlabel = tk.Label(hero, text="재충전까지", bg=PANEL, fg=MUT, font=(F, 9))
-        self.hlabel.pack(anchor="w", padx=18, pady=(16, 2))
-        self.count = tk.Label(hero, text="--:--:--", bg=PANEL, fg=TX, font=(F, 44, "bold"))
-        self.count.pack(anchor="w", padx=16)
-        self.sub = tk.Label(hero, text="", bg=PANEL, fg=MUT, font=(F, 10))
-        self.sub.pack(anchor="w", padx=18, pady=(6, 4))
-        self.bar = tk.Canvas(hero, height=8, bg=TRACK, highlightthickness=0)
-        self.bar.pack(fill="x", padx=18, pady=(6, 18))
-
-        grid = tk.Frame(wrap, bg=BG)
-        grid.pack(fill="x")
-        c1, self.v_cw, _ = self._card(grid, "현재 윈도우")
-        c2, self.v_today, _ = self._card(grid, "오늘")
-        c3, self.v_week, self.s_week = self._card(grid, "이번 주")
-        for i, c in enumerate((c1, c2, c3)):
-            c.grid(row=0, column=i, sticky="ew", padx=(0 if i == 0 else 8, 0))
-            grid.columnconfigure(i, weight=1)
-
-        dp = tk.Frame(wrap, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        dp.pack(fill="both", expand=True, pady=(12, 0))
-        tk.Label(dp, text="최근 7일 사용량", bg=PANEL, fg=MUT, font=(F, 9)).pack(anchor="w", padx=16, pady=(12, 6))
-        self.daily = tk.Frame(dp, bg=PANEL)
-        self.daily.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+        self.cards_box = tk.Frame(wrap, bg=BG)
+        self.cards_box.pack(fill="both", expand=True)
+        self.empty = tk.Label(self.cards_box, text="감지된 에이전트 없음", bg=BG, fg=MUT, font=(F, 10))
 
     # ---------- 상태 ----------
     def _update_state(self, s, first=False):
         with self.lock:
             self.state = s
-        if first:
-            self._ns["last_start"] = s["block"]["start"] if s["block"] else None
-        else:
+        if not first:
             self._check_notifications(s)
 
     def _check_notifications(self, s):
-        b, ns = s.get("block"), self._ns
         soon_sec = core.CONFIG["reset_soon_min"] * 60
-        if b is None:
-            if ns["last_start"] is not None:
-                _notify("재충전 완료", "5시간 윈도우가 리셋됐어. 다시 써도 돼.")
-                ns.update(last_start=None, warned_ratio=False, warned_soon=False)
-            return
-        if ns["last_start"] != b["start"]:
-            if ns["last_start"] is not None:
-                _notify("재충전 완료", "새 5시간 윈도우 시작 - 한도 리셋됨.")
-            ns.update(last_start=b["start"], warned_ratio=False, warned_soon=False)
-        if 0 < b["remaining_sec"] <= soon_sec and not ns["warned_soon"]:
-            _notify("리셋 임박", f"{b['remaining_sec'] // 60}분 뒤 윈도우 리셋. 마무리 정리해.")
-            ns["warned_soon"] = True
-        if b["ratio"] is not None and b["ratio"] >= core.CONFIG["warn_ratio"] and not ns["warned_ratio"]:
-            _notify("사용량 경고", f"이번 윈도우가 평소 최대의 {int(b['ratio'] * 100)}%. 곧 끊길 수 있어.")
-            ns["warned_ratio"] = True
+        warn = core.CONFIG["warn_ratio"]
+        live = set()
+        for a in s.get("agents", []):
+            live.add(a["id"])
+            ns = self._ns.setdefault(a["id"], {"last_start": None, "warned_ratio": False, "warned_soon": False})
+            b = a["block"]
+            nm = a["name"]
+            if b is None:
+                if ns["last_start"] is not None:
+                    _notify(f"{nm} 재충전 완료", "윈도우 리셋됨. 다시 써도 돼.")
+                    ns.update(last_start=None, warned_ratio=False, warned_soon=False)
+                continue
+            if ns["last_start"] != b["start"]:
+                if ns["last_start"] is not None:
+                    _notify(f"{nm} 재충전 완료", "새 윈도우 시작 - 한도 리셋됨.")
+                ns.update(last_start=b["start"], warned_ratio=False, warned_soon=False)
+            if 0 < b["remaining_sec"] <= soon_sec and not ns["warned_soon"]:
+                _notify(f"{nm} 리셋 임박", f"{b['remaining_sec'] // 60}분 뒤 리셋. 마무리 정리해.")
+                ns["warned_soon"] = True
+            if b["ratio"] is not None and b["ratio"] >= warn and not ns["warned_ratio"]:
+                _notify(f"{nm} 사용량 경고", f"평소 최대의 {int(b['ratio'] * 100)}%. 곧 끊길 수 있어.")
+                ns["warned_ratio"] = True
+        for dead in [k for k in self._ns if k not in live]:
+            self._ns.pop(dead, None)
 
     def _worker(self):
         while True:
@@ -232,64 +343,44 @@ class RefuelApp:
                 print("refresh 오류:", e)
 
     # ---------- 렌더 ----------
+    def toggle(self, aid):
+        self.expanded_id = None if self.expanded_id == aid else aid
+        self._apply_expand()
+
+    def _apply_expand(self):
+        for c in self.cards.values():
+            c.set_expanded(c.id == self.expanded_id)
+
+    def _reconcile(self, agents):
+        ids = [a["id"] for a in agents]
+        if ids == self._card_order:
+            return
+        for c in self.cards.values():
+            c.outer.destroy()
+        self.cards.clear()
+        self._card_order = ids
+        self.empty.pack_forget()
+        if not ids:
+            self.empty.pack(anchor="w", pady=4)
+            return
+        for a in agents:
+            self.cards[a["id"]] = AgentCard(self, self.cards_box, a["id"], a["name"])
+        if self.expanded_id not in self.cards:
+            self.expanded_id = ids[0]
+        self._apply_expand()
+
     def _tick(self):
         with self.lock:
             s = dict(self.state)
-        acc = core.CONFIG["accent"]
-        ag = s.get("agents", [])
-        self.agents.config(text="감지된 에이전트 · " + (", ".join(a["name"] for a in ag) if ag else "없음"))
         self.meta.config(text=f"{'알림 ON' if _HAVE_TOAST else '알림 OFF'} · 이벤트 {_fmt_n(s.get('total_events'))}")
-        b = s.get("block")
-        w = max(self.bar.winfo_width(), 1)
-        self.bar.delete("all")
-        if not b:
-            self.hlabel.config(text="상태")
-            self.count.config(text="완충", fg=acc)
-            self.sub.config(text="활성 윈도우 없음 - 지금 바로 사용 가능")
-            self.v_cw.config(text="0")
-        else:
-            now = datetime.now(timezone.utc).astimezone()
-            remaining = max(0, int((b["reset_at"] - now).total_seconds()))
-            ratio = min(1.0, (18000 - remaining) / 18000)
-            soon = remaining <= core.CONFIG["reset_soon_min"] * 60
-            over = b["ratio"] is not None and b["ratio"] >= core.CONFIG["warn_ratio"]
-            col = DNG if over else (WARN if soon else acc)
-            self.hlabel.config(text="재충전까지")
-            self.count.config(text=_fmt_dur(remaining), fg=col)
-            extra = f" · 추정한도 {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
-            self.sub.config(text=f"리셋 {b['reset_at'].strftime('%H:%M')} · 윈도우 {_fmt_n(b['tokens'])} 토큰{extra}")
-            self.v_cw.config(text=_fmt_n(b["tokens"]))
-            self.bar.create_rectangle(0, 0, int(w * ratio), 8, fill=col, width=0)
-
-        self.v_today.config(text=_fmt_n(s.get("today_tokens")))
-        self.v_week.config(text=_fmt_n(s.get("week_tokens")))
-        wr = s.get("weekly_reset")
-        if wr:
-            days = s.get("weekly_remaining_sec", 0) // 86400
-            self.s_week.config(text=f"리셋 {_WD[wr.weekday()]} {wr.strftime('%H:%M')} · D-{days}")
-        self._render_daily(s.get("daily", []))
+        agents = sorted(s.get("agents", []), key=lambda a: a["name"])
+        self._reconcile(agents)
+        for a in agents:
+            c = self.cards.get(a["id"])
+            if c:
+                c.update(a)
+                c.tick()
         self.root.after(1000, self._tick)
-
-    def _render_daily(self, daily):
-        for ch in self.daily.winfo_children():
-            ch.destroy()
-        if not daily:
-            tk.Label(self.daily, text="데이터 없음", bg=PANEL, fg=MUT, font=(F, 9)).pack(anchor="w")
-            return
-        mx = max((v for _, v in daily), default=1) or 1
-        today = datetime.now().astimezone().date()
-        for d, v in reversed(daily):
-            row = tk.Frame(self.daily, bg=PANEL)
-            row.pack(fill="x", pady=3)
-            tag = "오늘" if d == today else f"{d.month:02d}/{d.day:02d} {_WD[d.weekday()]}"
-            tk.Label(row, text=tag, bg=PANEL, fg=TX, font=(F, 9), width=9, anchor="w").pack(side="left")
-            tk.Label(row, text=_fmt_short(v), bg=PANEL, fg=MUT, font=(F, 9), width=7, anchor="e").pack(side="right")
-            track = tk.Canvas(row, height=7, bg=TRACK, highlightthickness=0)
-            track.pack(side="left", fill="x", expand=True, padx=8)
-            track.update_idletasks()
-            tw = max(track.winfo_width(), 1)
-            col = core.CONFIG["accent"] if d == today else BLU
-            track.create_rectangle(0, 0, int(tw * (v / mx)), 7, fill=col, width=0)
 
     # ---------- 설정창 ----------
     def _open_settings(self):

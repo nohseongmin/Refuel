@@ -182,18 +182,9 @@ def _last_weekly_reset(now_local, dow, hour):
     return cand
 
 
-def build_state():
-    """현재 사용량/윈도우 상태를 dict로 반환. datetime은 로컬 aware 객체."""
-    events, detected = _scan()
-    now = datetime.now(timezone.utc)
-    now_local = now.astimezone()
-    today = now_local.date()
-
-    wk_reset = _last_weekly_reset(now_local, CONFIG["weekly_reset_dow"], CONFIG["weekly_reset_hour"])
-    wk_next = wk_reset + timedelta(days=7)
-
+def _agent_breakdown(events, now, now_local, today, wk_reset, wk_next):
+    """한 에이전트의 이벤트들로 사용량/윈도우/일별/추정한도 계산."""
     today_tok = week_tok = 0
-    by_agent = {}
     daily = {}
     for e in events:
         d = e["ts"].astimezone().date()
@@ -203,8 +194,6 @@ def build_state():
             week_tok += e["total"]
         if 0 <= (today - d).days < 7:
             daily[d] = daily.get(d, 0) + e["total"]
-        by_agent[e["agent"]] = by_agent.get(e["agent"], 0) + e["total"]
-
     daily_list = [(today - timedelta(days=i), daily.get(today - timedelta(days=i), 0))
                   for i in range(6, -1, -1)]
 
@@ -226,17 +215,43 @@ def build_state():
                 "remaining_sec": max(0, int((end - now).total_seconds())),
                 "ratio": (last["tokens"] / ceiling) if ceiling else None,
             }
-
     return {
         "today_tokens": today_tok,
         "week_tokens": week_tok,
         "daily": daily_list,
         "weekly_reset": wk_next,
         "weekly_remaining_sec": max(0, int((wk_next - now_local).total_seconds())),
-        "total_events": len(events),
         "ceiling_est": ceiling or None,
-        "agents": [{"id": k, "name": AGENTS[k]["name"], "tokens": v}
-                   for k, v in by_agent.items()] or
-                  [{"id": k, "name": v, "tokens": 0} for k, v in detected.items()],
+        "events_n": len(events),
         "block": block,
     }
+
+
+def build_state():
+    """에이전트별로 분리된 상태를 반환. datetime은 로컬 aware 객체."""
+    events, detected = _scan()
+    now = datetime.now(timezone.utc)
+    now_local = now.astimezone()
+    today = now_local.date()
+    wk_reset = _last_weekly_reset(now_local, CONFIG["weekly_reset_dow"], CONFIG["weekly_reset_hour"])
+    wk_next = wk_reset + timedelta(days=7)
+
+    grouped = {}
+    for e in events:
+        grouped.setdefault(e["agent"], []).append(e)
+    for aid in detected:
+        grouped.setdefault(aid, [])
+
+    agents = []
+    for aid, evs in grouped.items():
+        bd = _agent_breakdown(evs, now, now_local, today, wk_reset, wk_next)
+        bd["id"] = aid
+        bd["name"] = AGENTS.get(aid, {}).get("name", aid)
+        agents.append(bd)
+
+    def urgency(a):
+        b = a["block"]
+        return b["remaining_sec"] if b else 10 ** 9
+    agents.sort(key=urgency)
+
+    return {"agents": agents, "total_events": len(events)}
