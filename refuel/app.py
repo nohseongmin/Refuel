@@ -373,7 +373,8 @@ class RefuelApp:
         with self.lock:
             s = dict(self.state)
         self.meta.config(text=f"{'알림 ON' if _HAVE_TOAST else '알림 OFF'} · 이벤트 {_fmt_n(s.get('total_events'))}")
-        agents = sorted(s.get("agents", []), key=lambda a: a["name"])
+        agents = sorted(s.get("agents", []),
+                        key=lambda a: a["block"]["remaining_sec"] if a["block"] else 10 ** 9)
         self._reconcile(agents)
         for a in agents:
             c = self.cards.get(a["id"])

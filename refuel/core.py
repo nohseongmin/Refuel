@@ -76,10 +76,14 @@ def claude_dirs():
     return _existing(cands)
 
 
-# 에이전트 레지스트리: 새 에이전트는 여기에 (dirs, glob, parser) 만 추가하면 자동 발견됨.
-AGENTS = {
-    "claude-code": {"name": "Claude Code", "dirs": claude_dirs, "glob": "**/*.jsonl"},
-}
+def codex_dirs():
+    """Codex CLI 세션 로그 후보 (실험적). CODEX_HOME 우선."""
+    cands = []
+    env = os.environ.get("CODEX_HOME")
+    if env:
+        cands.append(Path(env) / "sessions")
+    cands.append(Path.home() / ".codex" / "sessions")
+    return _existing(cands)
 
 
 # ---------------- 파싱 ----------------
@@ -125,6 +129,54 @@ def _parse_claude_file(path, agent):
     return events
 
 
+def _parse_codex_file(path, agent):
+    """Codex CLI rollout JSONL의 last_token_usage(턴별 증분)만 합산. 실험적·미검증."""
+    events = []
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if "token" not in line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+                payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else obj
+                info = payload.get("info") if isinstance(payload.get("info"), dict) else None
+                usage = info.get("last_token_usage") if isinstance(info, dict) else None
+                if not isinstance(usage, dict):
+                    continue
+                ts = obj.get("timestamp") or payload.get("timestamp")
+                if not ts:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                except Exception:
+                    continue
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                inp = usage.get("input_tokens", 0) or 0
+                out = usage.get("output_tokens", 0) or 0
+                cached = usage.get("cached_input_tokens", 0) or 0
+                events.append({
+                    "ts": dt, "agent": agent,
+                    "inp": inp, "out": out, "cache": cached,
+                    "total": inp + out + cached, "id": None,
+                })
+    except Exception:
+        pass
+    return events
+
+
+# 에이전트 레지스트리: 새 에이전트는 (dirs, glob, parser) 만 추가하면 자동 발견됨.
+AGENTS = {
+    "claude-code": {"name": "Claude Code", "dirs": claude_dirs, "glob": "**/*.jsonl",
+                    "parser": _parse_claude_file},
+    "codex": {"name": "Codex (실험)", "dirs": codex_dirs, "glob": "**/*.jsonl",
+              "parser": _parse_codex_file},
+}
+
+
 def _scan():
     """등록된 모든 에이전트의 로그를 자동 발견·파싱(파일별 mtime 캐시) 후 id 로 중복 제거."""
     merged = {}
@@ -141,7 +193,7 @@ def _scan():
                 if cached and cached[0] == key:
                     evs = cached[1]
                 else:
-                    evs = _parse_claude_file(p, agent_id)
+                    evs = spec["parser"](p, agent_id)
                     _cache[p] = (key, evs)
                 if evs:
                     detected[agent_id] = spec["name"]

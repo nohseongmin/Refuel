@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build exe
+        run: >
+          python -m PyInstaller --noconfirm --onefile --windowed --name Refuel
+          --collect-all pystray --collect-all PIL --collect-all winotify run.py
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Refuel ${{ github.ref_name }}
+          files: dist/Refuel.exe
+          body: |
+            Refuel ${{ github.ref_name }} (pre-1.0)
+
+            Windows 단일 실행 파일 — 다운로드 후 더블클릭.
+            서버·계정 연결 없이 로컬 로그만 읽음. (1.0 = 폰 연결)
