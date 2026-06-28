@@ -1,0 +1,6 @@
+# 런타임 (없어도 핵심 동작 - 트레이/토스트만 비활성)
+pystray>=0.19
+pillow>=10.0
+winotify>=1.1.0
+
+# 빌드용(개발): pip install pyinstaller
