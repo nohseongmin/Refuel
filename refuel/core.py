@@ -9,7 +9,7 @@ import os
 import sqlite3
 import logging
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 
 # ---------------- 경로 ----------------
 CONFIG_DIR = Path.home() / ".refuel"
@@ -282,6 +282,23 @@ def _last_weekly_reset(now_local, dow, hour):
     return cand
 
 
+def _weekly_ceiling(agent, dow, today):
+    """과거 '완료된 주'들의 총 토큰 최댓값 = 주간 한도 추정(히스토리 기반)."""
+    hist = _history_daily(agent)
+    if not hist:
+        return 0
+    buckets = {}
+    for day_iso, tok in hist.items():
+        try:
+            d = date.fromisoformat(day_iso)
+        except Exception:
+            continue
+        ws = d - timedelta(days=(d.weekday() - dow) % 7)
+        buckets[ws] = buckets.get(ws, 0) + tok
+    cur_ws = today - timedelta(days=(today.weekday() - dow) % 7)
+    return max((v for k, v in buckets.items() if k < cur_ws), default=0)
+
+
 def _agent_breakdown(events, agent, now, now_local, today, wk_reset, wk_next):
     today_tok = week_tok = 0
     daily = {}  # date -> [tok, inp, out, cache]
@@ -321,12 +338,21 @@ def _agent_breakdown(events, agent, now, now_local, today, wk_reset, wk_next):
                 "remaining_sec": max(0, int((end - now).total_seconds())),
                 "ratio": (last["tokens"] / ceiling) if ceiling else None,
             }
+    wk_ceiling = _weekly_ceiling(agent, CONFIG["weekly_reset_dow"], today)
+    weekly = {
+        "tokens": week_tok,
+        "reset_at": wk_next,
+        "remaining_sec": max(0, int((wk_next - now_local).total_seconds())),
+        "ceiling_est": wk_ceiling or None,
+        "ratio": (week_tok / wk_ceiling) if wk_ceiling else None,
+    }
     return {
         "today_tokens": today_tok,
         "week_tokens": week_tok,
         "daily": daily_list,
+        "weekly": weekly,
         "weekly_reset": wk_next,
-        "weekly_remaining_sec": max(0, int((wk_next - now_local).total_seconds())),
+        "weekly_remaining_sec": weekly["remaining_sec"],
         "ceiling_est": ceiling or None,
         "block": block,
     }

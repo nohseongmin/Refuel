@@ -148,6 +148,16 @@ def _fmt_short(v):
     return str(v)
 
 
+def _fmt_long(sec):
+    """일 단위까지. 1일 미만이면 HH:MM:SS, 이상이면 'N일 HH:MM:SS'."""
+    if sec is None:
+        return "--:--:--"
+    sec = max(0, int(sec))
+    days, rem = sec // 86400, sec % 86400
+    base = f"{rem // 3600:02d}:{rem % 3600 // 60:02d}:{rem % 60:02d}"
+    return f"{days}일 {base}" if days else base
+
+
 class AgentCard:
     """에이전트 1개 카드 (접힘=헤더 한 줄, 펼침=상세)."""
 
@@ -156,6 +166,10 @@ class AgentCard:
         self.reset_at = None
         self.usage_ratio = None
         self.has_block = False
+        self.primary = "full"          # "5h" | "weekly" | "full"
+        self.wk_reset = None
+        self.wk_ratio = None
+        self.wk_rem = None
 
         self.outer = tk.Frame(parent, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         self.outer.pack(fill="x", pady=(0, 10))
@@ -196,7 +210,9 @@ class AgentCard:
         self.sub = tk.Label(d, text="", bg=PANEL, fg=MUT, font=(F, 10))
         self.sub.pack(anchor="w", padx=16, pady=(4, 2))
         self.bd = tk.Label(d, text="", bg=PANEL, fg=MUT, font=(F, 9))
-        self.bd.pack(anchor="w", padx=16, pady=(0, 4))
+        self.bd.pack(anchor="w", padx=16, pady=(0, 2))
+        self.wk = tk.Label(d, text="", bg=PANEL, fg=MUT, font=(F, 9))
+        self.wk.pack(anchor="w", padx=16, pady=(0, 4))
         self.bar = tk.Canvas(d, height=8, bg=TRACK, highlightthickness=0)
         self.bar.pack(fill="x", padx=16, pady=(2, 12))
         grid = tk.Frame(d, bg=PANEL)
@@ -220,25 +236,38 @@ class AgentCard:
     def update(self, a):
         b = a["block"]
         self.has_block = b is not None
+        wk = a.get("weekly") or {}
+        self.wk_reset = wk.get("reset_at")
+        self.wk_ratio = wk.get("ratio")
+        self.wk_rem = wk.get("remaining_sec")
+        wk_over = self.wk_ratio is not None and self.wk_ratio >= core.CONFIG["warn_ratio"]
+
         if b:
+            self.primary = "5h"
             self.reset_at = b["reset_at"]
             self.usage_ratio = b["ratio"]
             self.cw_val.config(text=_fmt_n(b["tokens"]))
             extra = f" · 추정한도 {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
-            self.sub.config(text=f"리셋 {b['reset_at'].strftime('%H:%M')} · 윈도우 {_fmt_n(b['tokens'])} 토큰{extra}")
+            self.sub.config(text=f"5시간 리셋 {b['reset_at'].strftime('%H:%M')} · 윈도우 {_fmt_n(b['tokens'])} 토큰{extra}")
             self.bd.config(text=f"입력 {_fmt_short(b['inp'])} · 출력 {_fmt_short(b['out'])} · 캐시 {_fmt_short(b['cache'])}")
         else:
             self.reset_at = None
             self.usage_ratio = None
             self.cw_val.config(text="0")
-            self.sub.config(text="활성 윈도우 없음 - 지금 바로 사용 가능")
             self.bd.config(text="")
+            if wk_over:
+                self.primary = "weekly"
+                self.sub.config(text="주간 한도 도달 - 풀릴 때까지 대기")
+            else:
+                self.primary = "full"
+                self.sub.config(text="활성 윈도우 없음 · 주간도 여유")
         self.today_val.config(text=_fmt_n(a["today_tokens"]))
         self.week_val.config(text=_fmt_n(a["week_tokens"]))
-        wr = a.get("weekly_reset")
-        if wr:
-            days = a.get("weekly_remaining_sec", 0) // 86400
-            self.week_sub.config(text=f"리셋 {_WD[wr.weekday()]} {wr.strftime('%H:%M')} · D-{days}")
+        if self.wk_reset:
+            days = (self.wk_rem or 0) // 86400
+            self.week_sub.config(text=f"리셋 {_WD[self.wk_reset.weekday()]} {self.wk_reset.strftime('%H:%M')} · D-{days}")
+            rtxt = f" · 추정 {int(self.wk_ratio * 100)}%" if self.wk_ratio is not None else ""
+            self.wk.config(text=f"주간 {_fmt_n(wk.get('tokens'))} 토큰 · 리셋 {_WD[self.wk_reset.weekday()]} {self.wk_reset.strftime('%H:%M')} (D-{days}){rtxt}")
         self._render_daily(a.get("daily", []))
 
     def _render_daily(self, daily):
@@ -261,40 +290,41 @@ class AgentCard:
             col = self.app.accent() if d == today else BLU
             tr.create_rectangle(0, 0, int(tw * (v / mx)), 7, fill=col, width=0)
 
-    def color(self):
-        acc = self.app.accent()
-        if not self.has_block:
-            return acc
-        now = datetime.now(timezone.utc).astimezone()
-        rem = max(0, int((self.reset_at - now).total_seconds()))
-        if self.usage_ratio is not None and self.usage_ratio >= core.CONFIG["warn_ratio"]:
-            return DNG
-        if rem <= core.CONFIG["reset_soon_min"] * 60:
-            return WARN
-        return acc
+    def _set_count(self, text, col):
+        self.hcount.config(text=text, fg=col)
+        self.count.config(text=text, fg=col)
+
+    def _set_bars(self, prog, ratio, col):
+        w = max(self.bar.winfo_width(), 1)
+        self.bar.delete("all")
+        self.bar.create_rectangle(0, 0, int(w * min(1.0, prog or 0)), 8, fill=col, width=0)
+        uw = max(self.hbar.winfo_width(), 1)
+        self.hbar.delete("all")
+        self.hbar.create_rectangle(0, 0, int(uw * min(1.0, ratio or 0)), 4, fill=col, width=0)
 
     def tick(self):
         acc = self.app.accent()
+        warn = core.CONFIG["warn_ratio"]
         self.dot.config(fg=acc)
-        if not self.has_block:
-            self.hcount.config(text="완충", fg=acc)
-            self.count.config(text="완충", fg=acc)
-            self.hbar.delete("all")
-            self.bar.delete("all")
-            return None
+        self.wk.config(fg=DNG if (self.wk_ratio is not None and self.wk_ratio >= warn) else MUT)
         now = datetime.now(timezone.utc).astimezone()
-        rem = max(0, int((self.reset_at - now).total_seconds()))
-        prog = min(1.0, (18000 - rem) / 18000)
-        col = self.color()
-        self.hcount.config(text=_fmt_dur(rem), fg=col)
-        self.count.config(text=_fmt_dur(rem), fg=col)
-        w = max(self.bar.winfo_width(), 1)
+
+        if self.primary == "5h":
+            rem = max(0, int((self.reset_at - now).total_seconds()))
+            over = self.usage_ratio is not None and self.usage_ratio >= warn
+            col = DNG if over else (WARN if rem <= core.CONFIG["reset_soon_min"] * 60 else acc)
+            self._set_count(_fmt_dur(rem), col)
+            self._set_bars((18000 - rem) / 18000, self.usage_ratio, col)
+            return rem
+        if self.primary == "weekly":
+            rem = max(0, int((self.wk_reset - now).total_seconds())) if self.wk_reset else 0
+            self._set_count(_fmt_long(rem), DNG)
+            self._set_bars(1 - rem / (7 * 86400), self.wk_ratio, DNG)
+            return rem
+        self._set_count("충전완료", acc)
         self.bar.delete("all")
-        self.bar.create_rectangle(0, 0, int(w * prog), 8, fill=col, width=0)
-        uw = max(self.hbar.winfo_width(), 1)
         self.hbar.delete("all")
-        self.hbar.create_rectangle(0, 0, int(uw * min(1.0, self.usage_ratio or 0)), 4, fill=col, width=0)
-        return rem
+        return None
 
 
 class RefuelApp:
@@ -361,19 +391,35 @@ class RefuelApp:
         live = set()
         for a in s.get("agents", []):
             live.add(a["id"])
-            ns = self._ns.setdefault(a["id"], {"last_start": None, "warned_ratio": False, "warned_soon": False})
-            b, nm = a["block"], a["name"]
+            ns = self._ns.setdefault(a["id"], {"last_start": None, "warned_ratio": False,
+                                               "warned_soon": False, "wk_reset": None, "wk_warned": False})
+            nm, b, wk = a["name"], a["block"], a.get("weekly") or {}
+
+            # --- 주간 한도 ---
+            wkr = wk.get("reset_at")
+            if wkr is not None:
+                if ns["wk_reset"] is None:
+                    ns["wk_reset"] = wkr
+                elif wkr != ns["wk_reset"]:
+                    _notify(f"{nm} 주간 한도 리셋", "주간 사용량 초기화됨. 다시 써도 돼.")
+                    ns["wk_reset"], ns["wk_warned"] = wkr, False
+                if wk.get("ratio") is not None and wk["ratio"] >= warn and not ns["wk_warned"]:
+                    days = wk.get("remaining_sec", 0) // 86400
+                    _notify(f"{nm} 주간 한도 경고", f"주간 추정 {int(wk['ratio'] * 100)}% · {days}일 후 리셋")
+                    ns["wk_warned"] = True
+
+            # --- 5시간 윈도우 ---
             if b is None:
                 if ns["last_start"] is not None:
-                    _notify(f"{nm} 재충전 완료", "윈도우 리셋됨. 다시 써도 돼.")
+                    _notify(f"{nm} 재충전 완료", "5시간 윈도우 리셋됨.")
                     ns.update(last_start=None, warned_ratio=False, warned_soon=False)
                 continue
             if ns["last_start"] != b["start"]:
                 if ns["last_start"] is not None:
-                    _notify(f"{nm} 재충전 완료", "새 윈도우 시작 - 한도 리셋됨.")
+                    _notify(f"{nm} 재충전 완료", "새 5시간 윈도우 시작.")
                 ns.update(last_start=b["start"], warned_ratio=False, warned_soon=False)
             if 0 < b["remaining_sec"] <= soon_sec and not ns["warned_soon"]:
-                _notify(f"{nm} 리셋 임박", f"{b['remaining_sec'] // 60}분 뒤 리셋. 마무리 정리해.")
+                _notify(f"{nm} 리셋 임박", f"{b['remaining_sec'] // 60}분 뒤 5시간 리셋.")
                 ns["warned_soon"] = True
             if b["ratio"] is not None and b["ratio"] >= warn and not ns["warned_ratio"]:
                 _notify(f"{nm} 사용량 경고", f"평소 최대의 {int(b['ratio'] * 100)}%. 곧 끊길 수 있어.")
@@ -445,7 +491,7 @@ class RefuelApp:
     def _update_tray_tip(self, soonest, name):
         if not self.tray:
             return
-        tip = f"Refuel · {name} {_fmt_dur(soonest)}" if soonest is not None else "Refuel"
+        tip = f"Refuel · {name} {_fmt_long(soonest)}" if soonest is not None else "Refuel"
         try:
             if self.tray.title != tip:
                 self.tray.title = tip
