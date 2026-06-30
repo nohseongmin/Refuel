@@ -1,30 +1,46 @@
-"""Refuel core - 에이전트 로그 자동탐지/파싱, 5시간 윈도우 계산, 설정 관리.
+"""Refuel core - 에이전트 로그 자동탐지/파싱, 5시간 윈도우 계산, 설정/히스토리.
 
-GUI/패키징과 분리된 순수 로직. 외부 의존성 없음(표준 라이브러리만).
-
-멀티 에이전트는 '자동 발견' 구조: 각 에이전트의 표준 로그 위치 후보를 앱이 알고 있고,
-존재하는 것만 스캔한다. 사용자가 경로를 지정하지 않는다.
+순수 로직(GUI 분리). 외부 의존성 없음(표준 라이브러리만).
+로컬 전용: 로그 읽기만 하고 네트워크 호출 없음. ~/.refuel 에 설정·히스토리·로그 저장.
 """
 import json
 import glob
 import os
+import sqlite3
+import logging
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 # ---------------- 경로 ----------------
 CONFIG_DIR = Path.home() / ".refuel"
 CONFIG_PATH = CONFIG_DIR / "config.json"
+DB_PATH = CONFIG_DIR / "history.db"
+LOG_PATH = CONFIG_DIR / "refuel.log"
 SESSION_WINDOW = timedelta(hours=5)     # Claude 구독 5시간 롤링 윈도우
+
+log = logging.getLogger("refuel")
+
+
+def setup_logging():
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        h = logging.FileHandler(LOG_PATH, encoding="utf-8")
+        h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        log.addHandler(h)
+        log.setLevel(logging.INFO)
+    except Exception:
+        pass
+
 
 # ---------------- 설정 ----------------
 DEFAULTS = {
-    "warn_ratio": 0.8,           # 추정 한도 대비 경고 임계
-    "reset_soon_min": 30,        # 리셋 임박 알림(분)
-    "weekly_reset_dow": 0,       # 주간 리셋 요일 (0=월 ... 6=일)
-    "weekly_reset_hour": 9,      # 주간 리셋 시각(시)
-    "minimize_to_tray": True,    # 창 닫으면 트레이로
-    "autostart": False,          # 윈도우 시작 시 자동 실행
-    "accent": "#46e08a",         # 강조 색상
+    "warn_ratio": 0.8,
+    "reset_soon_min": 30,
+    "weekly_reset_dow": 0,
+    "weekly_reset_hour": 9,
+    "minimize_to_tray": True,
+    "autostart": False,
+    "accent": "#46e08a",
 }
 CONFIG = dict(DEFAULTS)
 
@@ -34,8 +50,8 @@ def load_config():
     try:
         if CONFIG_PATH.exists():
             CONFIG.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("config 로드 실패: %s", e)
     return CONFIG
 
 
@@ -44,7 +60,44 @@ def save_config():
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_PATH.write_text(json.dumps(CONFIG, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
-        print("config 저장 실패:", e)
+        log.warning("config 저장 실패: %s", e)
+
+
+# ---------------- 히스토리(SQLite) ----------------
+def _db():
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(DB_PATH, timeout=3)
+    con.execute("CREATE TABLE IF NOT EXISTS daily("
+                "agent TEXT, day TEXT, tokens INTEGER, inp INTEGER, out INTEGER, cache INTEGER,"
+                "PRIMARY KEY(agent, day))")
+    return con
+
+
+def _persist_daily(agent, rows):
+    """rows: {date: (tok, inp, out, cache)}. 같은 날은 더 큰 값으로 갱신(단조 증가)."""
+    try:
+        con = _db()
+        con.executemany(
+            "INSERT INTO daily(agent,day,tokens,inp,out,cache) VALUES(?,?,?,?,?,?) "
+            "ON CONFLICT(agent,day) DO UPDATE SET tokens=max(tokens,excluded.tokens), "
+            "inp=max(inp,excluded.inp), out=max(out,excluded.out), cache=max(cache,excluded.cache)",
+            [(agent, d.isoformat(), t, i, o, c) for d, (t, i, o, c) in rows.items()])
+        con.commit()
+        con.close()
+    except Exception as e:
+        log.warning("history 저장 실패: %s", e)
+
+
+def _history_daily(agent):
+    try:
+        con = _db()
+        cur = con.execute("SELECT day, tokens FROM daily WHERE agent=?", (agent,))
+        m = {row[0]: row[1] for row in cur.fetchall()}
+        con.close()
+        return m
+    except Exception as e:
+        log.warning("history 로드 실패: %s", e)
+        return {}
 
 
 # ---------------- 에이전트 로그 위치 자동탐지 ----------------
@@ -62,22 +115,18 @@ def _existing(paths):
 
 
 def claude_dirs():
-    """Claude Code 로그 디렉터리 후보. CLAUDE_CONFIG_DIR(여러 개 가능) 우선."""
     cands = []
     env = os.environ.get("CLAUDE_CONFIG_DIR")
     if env:
         for part in env.split(os.pathsep):
             if part.strip():
                 cands.append(Path(part.strip()) / "projects")
-    cands += [
-        Path.home() / ".claude" / "projects",
-        Path.home() / ".config" / "claude" / "projects",
-    ]
+    cands += [Path.home() / ".claude" / "projects",
+              Path.home() / ".config" / "claude" / "projects"]
     return _existing(cands)
 
 
 def codex_dirs():
-    """Codex CLI 세션 로그 후보 (실험적). CODEX_HOME 우선."""
     cands = []
     env = os.environ.get("CODEX_HOME")
     if env:
@@ -124,8 +173,8 @@ def _parse_claude_file(path, agent):
                     "total": inp + out + cc + cr,
                     "id": msg.get("id") or obj.get("uuid"),
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("parse 실패 %s: %s", path, e)
     return events
 
 
@@ -163,8 +212,8 @@ def _parse_codex_file(path, agent):
                     "inp": inp, "out": out, "cache": cached,
                     "total": inp + out + cached, "id": None,
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("codex parse 실패 %s: %s", path, e)
     return events
 
 
@@ -178,7 +227,6 @@ AGENTS = {
 
 
 def _scan():
-    """등록된 모든 에이전트의 로그를 자동 발견·파싱(파일별 mtime 캐시) 후 id 로 중복 제거."""
     merged = {}
     detected = {}
     for agent_id, spec in AGENTS.items():
@@ -203,7 +251,7 @@ def _scan():
 
 
 def _compute_blocks(events):
-    """5시간 윈도우 블록으로 분할. 블록 시작 = 첫 메시지 시각(정시 내림 안 함)."""
+    """5시간 윈도우 블록 분할. 블록 시작 = 첫 메시지 시각(정시 내림 안 함)."""
     blocks, cur = [], None
     for e in events:
         new = cur is None
@@ -234,10 +282,9 @@ def _last_weekly_reset(now_local, dow, hour):
     return cand
 
 
-def _agent_breakdown(events, now, now_local, today, wk_reset, wk_next):
-    """한 에이전트의 이벤트들로 사용량/윈도우/일별/추정한도 계산."""
+def _agent_breakdown(events, agent, now, now_local, today, wk_reset, wk_next):
     today_tok = week_tok = 0
-    daily = {}
+    daily = {}  # date -> [tok, inp, out, cache]
     for e in events:
         d = e["ts"].astimezone().date()
         if d == today:
@@ -245,9 +292,16 @@ def _agent_breakdown(events, now, now_local, today, wk_reset, wk_next):
         if e["ts"].astimezone() >= wk_reset:
             week_tok += e["total"]
         if 0 <= (today - d).days < 7:
-            daily[d] = daily.get(d, 0) + e["total"]
-    daily_list = [(today - timedelta(days=i), daily.get(today - timedelta(days=i), 0))
-                  for i in range(6, -1, -1)]
+            r = daily.setdefault(d, [0, 0, 0, 0])
+            r[0] += e["total"]; r[1] += e["inp"]; r[2] += e["out"]; r[3] += e["cache"]
+
+    if daily:
+        _persist_daily(agent, {d: tuple(r) for d, r in daily.items()})
+    hist = _history_daily(agent)
+    daily_list = []
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        daily_list.append((d, max(daily.get(d, [0])[0], hist.get(d.isoformat(), 0))))
 
     blocks = _compute_blocks(events)
     ceiling = 0
@@ -274,7 +328,6 @@ def _agent_breakdown(events, now, now_local, today, wk_reset, wk_next):
         "weekly_reset": wk_next,
         "weekly_remaining_sec": max(0, int((wk_next - now_local).total_seconds())),
         "ceiling_est": ceiling or None,
-        "events_n": len(events),
         "block": block,
     }
 
@@ -296,14 +349,10 @@ def build_state():
 
     agents = []
     for aid, evs in grouped.items():
-        bd = _agent_breakdown(evs, now, now_local, today, wk_reset, wk_next)
+        bd = _agent_breakdown(evs, aid, now, now_local, today, wk_reset, wk_next)
         bd["id"] = aid
         bd["name"] = AGENTS.get(aid, {}).get("name", aid)
         agents.append(bd)
-
-    def urgency(a):
-        b = a["block"]
-        return b["remaining_sec"] if b else 10 ** 9
-    agents.sort(key=urgency)
+    agents.sort(key=lambda a: a["block"]["remaining_sec"] if a["block"] else 10 ** 9)
 
     return {"agents": agents, "total_events": len(events)}

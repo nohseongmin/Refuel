@@ -1,18 +1,22 @@
 """Refuel GUI - 다크 트레이 앱 (에이전트별 아코디언 카드).
 
-- 에이전트별 카드 스택: 접힌 상태=한 줄(이름·미니게이지·리셋), 클릭하면 펼쳐져 상세
-- 폰트 자동선택(한글+숫자 통일), 한도 자동추정, 로그 위치 자동탐지
-- pystray 트레이 상주(닫으면 트레이로, 우클릭 종료로만 완전 종료) + winotify 토스트
+- 에이전트별 카드 스택: 접힘=한 줄, 클릭하면 펼쳐져 상세(입력/출력/캐시 분리 포함)
+- 폰트 자동선택, 한도 자동추정, 로그 위치 자동탐지, DPI 선명도
+- 트레이 상주(닫으면 트레이로, 우클릭 종료) + 툴팁에 카운트다운 + 단일 인스턴스
+- 자동시작 시 조용히 트레이로 시작. 백그라운드 스캔(UI 안 멈춤). 에러는 로그파일로.
 """
 import os
 import sys
 import threading
 import time
+import logging
 import tkinter as tk
 import tkinter.font as tkfont
 from datetime import datetime, timezone
 
 from . import core
+
+log = logging.getLogger("refuel")
 
 # ---------------- 팔레트 ----------------
 BG = "#0d0f14"
@@ -29,6 +33,7 @@ BLU = "#5a8dee"
 F = "Malgun Gothic"   # __init__에서 자동선택으로 덮어씀
 REFRESH_SECONDS = 20
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
+_mutex_handle = None  # 단일 인스턴스 뮤텍스 참조 유지
 
 # ---------------- 선택 의존성 ----------------
 try:
@@ -54,6 +59,29 @@ _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _APP_NAME = "Refuel"
 
 
+def _enable_dpi():
+    """고해상도에서 또렷하게. Tk 생성 전에 호출."""
+    try:
+        from ctypes import windll
+        try:
+            windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
+def _single_instance():
+    """네임드 뮤텍스로 중복 실행 방지(포트 안 엶). 이미 있으면 False."""
+    global _mutex_handle
+    try:
+        from ctypes import windll
+        _mutex_handle = windll.kernel32.CreateMutexW(None, False, "Refuel_SingleInstance_Mutex")
+        return windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+    except Exception:
+        return True
+
+
 def _pick_font(root):
     try:
         fams = set(tkfont.families(root))
@@ -67,7 +95,7 @@ def _pick_font(root):
 
 
 def _notify(title, msg):
-    print(f"[알림] {title} - {msg}")
+    log.info("알림: %s - %s", title, msg)
     if not _HAVE_TOAST:
         return
     try:
@@ -75,7 +103,7 @@ def _notify(title, msg):
         t.set_audio(audio.Default, loop=False)
         t.show()
     except Exception as e:
-        print("  (토스트 실패:", e, ")")
+        log.warning("토스트 실패: %s", e)
 
 
 def _set_autostart(enable):
@@ -83,10 +111,10 @@ def _set_autostart(enable):
         return
     try:
         if getattr(sys, "frozen", False):
-            cmd = f'"{sys.executable}"'
+            cmd = f'"{sys.executable}" --minimized'
         else:
             script = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "run.py"))
-            cmd = f'"{sys.executable}" "{script}"'
+            cmd = f'"{sys.executable}" "{script}" --minimized'
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE)
         if enable:
             winreg.SetValueEx(key, _APP_NAME, 0, winreg.REG_SZ, cmd)
@@ -97,7 +125,7 @@ def _set_autostart(enable):
                 pass
         winreg.CloseKey(key)
     except Exception as e:
-        print("autostart 설정 실패:", e)
+        log.warning("autostart 설정 실패: %s", e)
 
 
 def _fmt_dur(sec):
@@ -125,7 +153,6 @@ class AgentCard:
 
     def __init__(self, app, parent, aid, name):
         self.app, self.id, self.name = app, aid, name
-        self.expanded = False
         self.reset_at = None
         self.usage_ratio = None
         self.has_block = False
@@ -167,7 +194,9 @@ class AgentCard:
         self.count = tk.Label(d, text="--:--:--", bg=PANEL, fg=TX, font=(F, 38, "bold"))
         self.count.pack(anchor="w", padx=16, pady=(2, 0))
         self.sub = tk.Label(d, text="", bg=PANEL, fg=MUT, font=(F, 10))
-        self.sub.pack(anchor="w", padx=16, pady=(4, 4))
+        self.sub.pack(anchor="w", padx=16, pady=(4, 2))
+        self.bd = tk.Label(d, text="", bg=PANEL, fg=MUT, font=(F, 9))
+        self.bd.pack(anchor="w", padx=16, pady=(0, 4))
         self.bar = tk.Canvas(d, height=8, bg=TRACK, highlightthickness=0)
         self.bar.pack(fill="x", padx=16, pady=(2, 12))
         grid = tk.Frame(d, bg=PANEL)
@@ -182,7 +211,6 @@ class AgentCard:
         self.daily.pack(fill="x", padx=16, pady=(0, 12))
 
     def set_expanded(self, val):
-        self.expanded = val
         self.chev.config(text="▾" if val else "▸")
         if val:
             self.detail.pack(fill="x")
@@ -198,11 +226,13 @@ class AgentCard:
             self.cw_val.config(text=_fmt_n(b["tokens"]))
             extra = f" · 추정한도 {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
             self.sub.config(text=f"리셋 {b['reset_at'].strftime('%H:%M')} · 윈도우 {_fmt_n(b['tokens'])} 토큰{extra}")
+            self.bd.config(text=f"입력 {_fmt_short(b['inp'])} · 출력 {_fmt_short(b['out'])} · 캐시 {_fmt_short(b['cache'])}")
         else:
             self.reset_at = None
             self.usage_ratio = None
             self.cw_val.config(text="0")
             self.sub.config(text="활성 윈도우 없음 - 지금 바로 사용 가능")
+            self.bd.config(text="")
         self.today_val.config(text=_fmt_n(a["today_tokens"]))
         self.week_val.config(text=_fmt_n(a["week_tokens"]))
         wr = a.get("weekly_reset")
@@ -231,6 +261,18 @@ class AgentCard:
             col = self.app.accent() if d == today else BLU
             tr.create_rectangle(0, 0, int(tw * (v / mx)), 7, fill=col, width=0)
 
+    def color(self):
+        acc = self.app.accent()
+        if not self.has_block:
+            return acc
+        now = datetime.now(timezone.utc).astimezone()
+        rem = max(0, int((self.reset_at - now).total_seconds()))
+        if self.usage_ratio is not None and self.usage_ratio >= core.CONFIG["warn_ratio"]:
+            return DNG
+        if rem <= core.CONFIG["reset_soon_min"] * 60:
+            return WARN
+        return acc
+
     def tick(self):
         acc = self.app.accent()
         self.dot.config(fg=acc)
@@ -239,13 +281,11 @@ class AgentCard:
             self.count.config(text="완충", fg=acc)
             self.hbar.delete("all")
             self.bar.delete("all")
-            return
+            return None
         now = datetime.now(timezone.utc).astimezone()
         rem = max(0, int((self.reset_at - now).total_seconds()))
         prog = min(1.0, (18000 - rem) / 18000)
-        soon = rem <= core.CONFIG["reset_soon_min"] * 60
-        over = self.usage_ratio is not None and self.usage_ratio >= core.CONFIG["warn_ratio"]
-        col = DNG if over else (WARN if soon else acc)
+        col = self.color()
         self.hcount.config(text=_fmt_dur(rem), fg=col)
         self.count.config(text=_fmt_dur(rem), fg=col)
         w = max(self.bar.winfo_width(), 1)
@@ -254,14 +294,17 @@ class AgentCard:
         uw = max(self.hbar.winfo_width(), 1)
         self.hbar.delete("all")
         self.hbar.create_rectangle(0, 0, int(uw * min(1.0, self.usage_ratio or 0)), 4, fill=col, width=0)
+        return rem
 
 
 class RefuelApp:
-    def __init__(self):
+    def __init__(self, start_hidden=False):
         core.load_config()
+        self.start_hidden = start_hidden
         self.state = {}
+        self.ready = False
         self.lock = threading.Lock()
-        self._ns = {}        # agent_id -> 알림 상태
+        self._ns = {}
         self.cards = {}
         self._card_order = []
         self.expanded_id = None
@@ -270,19 +313,29 @@ class RefuelApp:
         self.root = tk.Tk()
         global F
         F = _pick_font(self.root)
+        self._apply_dpi_scaling()
         self.root.title("Refuel")
         self.root.configure(bg=BG)
-        self.root.geometry("500x640")
-        self.root.minsize(460, 420)
-        self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._build_ui()
 
-        self._update_state(core.build_state(), first=True)
         threading.Thread(target=self._worker, daemon=True).start()
         self._tick()
 
     def accent(self):
         return core.CONFIG["accent"]
+
+    def _apply_dpi_scaling(self):
+        scale = 1.0
+        try:
+            dpi = self.root.winfo_fpixels("1i")
+            if dpi and dpi > 0:
+                scale = max(1.0, dpi / 96.0)
+                self.root.tk.call("tk", "scaling", dpi / 72.0)
+        except Exception:
+            pass
+        self.root.geometry(f"{int(500 * scale)}x{int(660 * scale)}")
+        self.root.minsize(int(450 * scale), int(420 * scale))
 
     # ---------- UI ----------
     def _build_ui(self):
@@ -298,15 +351,10 @@ class RefuelApp:
         self.meta.pack(side="right")
         self.cards_box = tk.Frame(wrap, bg=BG)
         self.cards_box.pack(fill="both", expand=True)
-        self.empty = tk.Label(self.cards_box, text="감지된 에이전트 없음", bg=BG, fg=MUT, font=(F, 10))
+        self.empty = tk.Label(self.cards_box, text="불러오는 중…", bg=BG, fg=MUT, font=(F, 10))
+        self.empty.pack(anchor="w", pady=4)
 
     # ---------- 상태 ----------
-    def _update_state(self, s, first=False):
-        with self.lock:
-            self.state = s
-        if not first:
-            self._check_notifications(s)
-
     def _check_notifications(self, s):
         soon_sec = core.CONFIG["reset_soon_min"] * 60
         warn = core.CONFIG["warn_ratio"]
@@ -314,8 +362,7 @@ class RefuelApp:
         for a in s.get("agents", []):
             live.add(a["id"])
             ns = self._ns.setdefault(a["id"], {"last_start": None, "warned_ratio": False, "warned_soon": False})
-            b = a["block"]
-            nm = a["name"]
+            b, nm = a["block"], a["name"]
             if b is None:
                 if ns["last_start"] is not None:
                     _notify(f"{nm} 재충전 완료", "윈도우 리셋됨. 다시 써도 돼.")
@@ -336,11 +383,15 @@ class RefuelApp:
 
     def _worker(self):
         while True:
-            time.sleep(REFRESH_SECONDS)
             try:
-                self._update_state(core.build_state())
-            except Exception as e:
-                print("refresh 오류:", e)
+                s = core.build_state()
+                with self.lock:
+                    self.state = s
+                    self.ready = True
+                self._check_notifications(s)
+            except Exception:
+                log.exception("스캔 실패")
+            time.sleep(REFRESH_SECONDS)
 
     # ---------- 렌더 ----------
     def toggle(self, aid):
@@ -361,6 +412,7 @@ class RefuelApp:
         self._card_order = ids
         self.empty.pack_forget()
         if not ids:
+            self.empty.config(text="불러오는 중…" if not self.ready else "감지된 에이전트 없음")
             self.empty.pack(anchor="w", pady=4)
             return
         for a in agents:
@@ -372,16 +424,33 @@ class RefuelApp:
     def _tick(self):
         with self.lock:
             s = dict(self.state)
-        self.meta.config(text=f"{'알림 ON' if _HAVE_TOAST else '알림 OFF'} · 이벤트 {_fmt_n(s.get('total_events'))}")
+            ready = self.ready
+        if ready:
+            self.meta.config(text=f"{'알림 ON' if _HAVE_TOAST else '알림 OFF'} · 이벤트 {_fmt_n(s.get('total_events'))}")
         agents = sorted(s.get("agents", []),
                         key=lambda a: a["block"]["remaining_sec"] if a["block"] else 10 ** 9)
         self._reconcile(agents)
+        soonest, soonest_name = None, ""
         for a in agents:
             c = self.cards.get(a["id"])
-            if c:
-                c.update(a)
-                c.tick()
+            if not c:
+                continue
+            c.update(a)
+            rem = c.tick()
+            if rem is not None and (soonest is None or rem < soonest):
+                soonest, soonest_name = rem, a["name"]
+        self._update_tray_tip(soonest, soonest_name)
         self.root.after(1000, self._tick)
+
+    def _update_tray_tip(self, soonest, name):
+        if not self.tray:
+            return
+        tip = f"Refuel · {name} {_fmt_dur(soonest)}" if soonest is not None else "Refuel"
+        try:
+            if self.tray.title != tip:
+                self.tray.title = tip
+        except Exception:
+            pass
 
     # ---------- 설정창 ----------
     def _open_settings(self):
@@ -391,7 +460,6 @@ class RefuelApp:
         win = tk.Toplevel(self.root, bg=BG)
         self._settings_win = win
         win.title("Refuel 설정")
-        win.geometry("340x320")
         win.configure(padx=20, pady=18)
         cfg = core.CONFIG
 
@@ -419,7 +487,7 @@ class RefuelApp:
                            bd=0, highlightthickness=0).pack(anchor="w", pady=(10, 0))
 
         check("창 닫으면 트레이로 (우클릭 종료로만 완전 종료)", tray_var)
-        check("윈도우 시작 시 자동 실행", auto_var)
+        check("윈도우 시작 시 자동 실행 (트레이로 조용히)", auto_var)
 
         tk.Label(win, text="강조 색상", bg=BG, fg=MUT, font=(F, 9)).pack(anchor="w", pady=(12, 2))
         accrow = tk.Frame(win, bg=BG)
@@ -428,6 +496,12 @@ class RefuelApp:
         for c in ["#46e08a", "#5a8dee", "#f5c451", "#f3766b", "#b388ff"]:
             tk.Button(accrow, bg=c, width=2, bd=2, relief="flat",
                       command=lambda c=c: acc_var.set(c)).pack(side="left", padx=3, pady=4)
+
+        btns = tk.Frame(win, bg=BG)
+        btns.pack(fill="x", pady=(18, 0))
+        tk.Button(btns, text="테스트 알림", bg=PANEL, fg=TX, font=(F, 9), bd=0, relief="flat",
+                  activebackground=BORDER, cursor="hand2",
+                  command=lambda: _notify("Refuel 테스트", "알림이 잘 보이면 성공!")).pack(side="left", ipady=4, ipadx=8)
 
         def save():
             try:
@@ -441,11 +515,10 @@ class RefuelApp:
                 cfg["autostart"] = auto_var.get()
                 _set_autostart(cfg["autostart"])
             core.save_config()
-            self._update_state(core.build_state())
             win.destroy()
 
-        tk.Button(win, text="저장", bg=acc_var.get(), fg=BG, font=(F, 10, "bold"), bd=0,
-                  relief="flat", cursor="hand2", command=save).pack(fill="x", pady=(18, 0), ipady=6)
+        tk.Button(btns, text="저장", bg=acc_var.get(), fg=BG, font=(F, 10, "bold"), bd=0,
+                  relief="flat", cursor="hand2", command=save).pack(side="right", ipady=4, ipadx=20)
 
     # ---------- 트레이 / 종료 ----------
     def _on_close(self):
@@ -483,18 +556,25 @@ class RefuelApp:
             self.tray = pystray.Icon("Refuel", self._make_icon_image(), "Refuel", menu)
             threading.Thread(target=self.tray.run, daemon=True).start()
         except Exception as e:
-            print("트레이 시작 실패:", e)
+            log.warning("트레이 시작 실패: %s", e)
             self.tray = None
 
     def run(self):
         self._start_tray()
         if core.CONFIG["autostart"]:
             _set_autostart(True)
+        if self.start_hidden and self.tray:
+            self.root.withdraw()
         self.root.mainloop()
 
 
 def main():
-    RefuelApp().run()
+    core.setup_logging()
+    _enable_dpi()
+    if not _single_instance():
+        _notify("Refuel", "이미 실행 중이에요.")
+        return
+    RefuelApp(start_hidden="--minimized" in sys.argv).run()
 
 
 if __name__ == "__main__":
