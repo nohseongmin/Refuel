@@ -3,5 +3,6 @@ pystray>=0.19
 pillow>=10.0
 winotify>=1.1.0
 qrcode>=7.0
+cryptography>=42.0
 
 # 빌드용(개발): pip install pyinstaller

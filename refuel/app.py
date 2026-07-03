@@ -627,8 +627,18 @@ class RefuelApp:
         tp.insert(0, alert_topic)
         tp.config(state="readonly")
         tp.pack(fill="x", ipady=3)
-        tk.Label(win, text="* 대시보드에서도 안내됨 · 나가는 데이터는 토큰 수·시각뿐",
+        tk.Label(win, text="* 상태는 종단간 암호화(AES-GCM) · 나가는 데이터는 토큰 수·시각뿐",
                  bg=BG, fg=MUT, font=(F, 8)).pack(anchor="w", pady=(8, 0))
+
+        def rotate():
+            sync.rotate()
+            win.destroy()
+            self._open_qr()
+            _notify("페어링 재발급", "이전 QR·토픽은 무효화됨. 폰에서 다시 스캔해줘.")
+
+        tk.Button(win, text="토픽·키 재발급 (유출 의심 시)", bg=PANEL, fg=WARN, font=(F, 9),
+                  bd=0, relief="flat", activebackground=BORDER, cursor="hand2",
+                  command=rotate).pack(anchor="w", pady=(10, 0), ipadx=8, ipady=3)
 
     # ---------- 트레이 / 종료 ----------
     def _on_close(self):

@@ -4,7 +4,11 @@
 - 나가는 데이터 = 토큰 수·시각·에이전트명뿐 (코드/프롬프트 없음).
 - 토픽은 최초 1회 랜덤 생성(secrets) → 사실상 비밀 채널.
   상태: <topic>-s (무음, 폰 대시보드가 폴링) / 알림: <topic>-a (푸시)
+- 상태 페이로드는 AES-GCM 종단간 암호화(키는 QR 프래그먼트로만 전달, 릴레이는 암호문만 봄).
+  GCM 인증 태그 덕에 위조 상태 주입도 차단된다. 알림 텍스트는 ntfy 앱 표시용이라 평문
+  (내용이 "재충전 완료" 수준이라 무해). 키/토픽은 rotate()로 재발급 가능.
 """
+import base64
 import json
 import logging
 import secrets
@@ -15,6 +19,12 @@ from datetime import datetime
 from . import core
 
 log = logging.getLogger("refuel")
+
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    _HAVE_AES = True
+except Exception:
+    _HAVE_AES = False
 
 _last_post = {"ts": 0.0, "sig": None}
 HEARTBEAT_SEC = 600          # 변화 없어도 10분마다 상태 갱신(ntfy.sh 일일 한도 고려)
@@ -38,12 +48,38 @@ def topic():
     return t
 
 
+def key():
+    """E2E 암호화 키(128bit hex). 최초 1회 생성 후 config에 고정."""
+    k = core.CONFIG.get("sync_key")
+    if not k:
+        k = secrets.token_hex(16)
+        core.CONFIG["sync_key"] = k
+        core.save_config()
+    return k
+
+
+def rotate():
+    """토픽+키 재발급 — 기존 페어링/구독 전부 무효화."""
+    core.CONFIG["sync_topic"] = ""
+    core.CONFIG["sync_key"] = ""
+    core.save_config()
+    _last_post.update(ts=0.0, sig=None)
+    return topic(), key()
+
+
+def _encrypt(obj):
+    """JSON → 'enc1:' + b64(nonce12 + AESGCM ciphertext)."""
+    n = secrets.token_bytes(12)
+    ct = AESGCM(bytes.fromhex(key())).encrypt(n, json.dumps(obj).encode("utf-8"), None)
+    return "enc1:" + base64.b64encode(n + ct).decode()
+
+
 def pair_url():
-    """폰이 QR로 여는 대시보드 URL."""
+    """폰이 QR로 여는 대시보드 URL. 토픽·키는 #프래그먼트라 서버로 전송되지 않음."""
     base = core.CONFIG.get("sync_app_url") or "https://nohseongmin.github.io/Refuel/"
     sv = server()
     extra = "" if sv == "https://ntfy.sh" else f"&sv={sv}"
-    return f"{base}#t={topic()}{extra}"
+    return f"{base}#t={topic()}&k={key()}{extra}"
 
 
 def _post_json(payload):
@@ -107,6 +143,9 @@ def post_state(state):
     sig = json.dumps(sig_src, default=str)
     if sig == _last_post["sig"] and (now - _last_post["ts"]) < HEARTBEAT_SEC:
         return
+    if not _HAVE_AES:
+        log.warning("cryptography 모듈 없음 - 상태 전송 중단(평문 전송은 하지 않음)")
+        return
     _last_post.update(ts=now, sig=sig)
-    _fire({"topic": topic() + "-s", "message": json.dumps(_compact(state)),
+    _fire({"topic": topic() + "-s", "message": _encrypt(_compact(state)),
            "priority": 1})
