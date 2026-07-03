@@ -41,6 +41,10 @@ DEFAULTS = {
     "minimize_to_tray": True,
     "autostart": False,
     "accent": "#46e08a",
+    "sync_enabled": False,       # 폰 연동(베타): ntfy 릴레이로 상태/알림 전송
+    "sync_topic": "",            # 최초 활성화 시 랜덤 생성
+    "sync_server": "https://ntfy.sh",
+    "sync_app_url": "https://nohseongmin.github.io/Refuel/",
 }
 CONFIG = dict(DEFAULTS)
 

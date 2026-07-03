@@ -14,7 +14,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 from datetime import datetime, timezone
 
-from . import core
+from . import core, sync
 
 log = logging.getLogger("refuel")
 
@@ -99,6 +99,10 @@ _APP = None  # 현재 앱 인스턴스 참조(트레이 풍선 알림용)
 
 def _notify(title, msg):
     log.info("알림: %s - %s", title, msg)
+    try:
+        sync.post_alert(title, msg)
+    except Exception as e:
+        log.warning("폰 알림 실패: %s", e)
     # 1순위: 트레이 아이콘 풍선 알림(가장 안정적 - PowerShell/앱등록 불필요)
     tray = getattr(_APP, "tray", None)
     if tray is not None:
@@ -448,6 +452,7 @@ class RefuelApp:
                     self.state = s
                     self.ready = True
                 self._check_notifications(s)
+                sync.post_state(s)
             except Exception:
                 log.exception("스캔 실패")
             time.sleep(REFRESH_SECONDS)
@@ -549,6 +554,18 @@ class RefuelApp:
         check("창 닫으면 트레이로 (우클릭 종료로만 완전 종료)", tray_var)
         check("윈도우 시작 시 자동 실행 (트레이로 조용히)", auto_var)
 
+        sync_var = tk.BooleanVar(value=cfg.get("sync_enabled", False))
+        syncrow = tk.Frame(win, bg=BG)
+        syncrow.pack(fill="x", pady=(10, 0))
+        tk.Checkbutton(syncrow, text="폰 연동 (베타) - 알림·상태를 폰으로", variable=sync_var,
+                       bg=BG, fg=TX, font=(F, 9), selectcolor=PANEL,
+                       activebackground=BG, activeforeground=TX,
+                       bd=0, highlightthickness=0).pack(side="left")
+        tk.Button(syncrow, text="QR 페어링", bg=PANEL, fg=TX, font=(F, 9), bd=0, relief="flat",
+                  activebackground=BORDER, cursor="hand2",
+                  command=lambda: (cfg.__setitem__("sync_enabled", True), sync_var.set(True),
+                                   core.save_config(), self._open_qr())).pack(side="right", ipadx=8, ipady=2)
+
         tk.Label(win, text="강조 색상", bg=BG, fg=MUT, font=(F, 9)).pack(anchor="w", pady=(12, 2))
         accrow = tk.Frame(win, bg=BG)
         accrow.pack(anchor="w")
@@ -570,6 +587,7 @@ class RefuelApp:
             except ValueError:
                 pass
             cfg["minimize_to_tray"] = tray_var.get()
+            cfg["sync_enabled"] = sync_var.get()
             cfg["accent"] = acc_var.get()
             if auto_var.get() != cfg["autostart"]:
                 cfg["autostart"] = auto_var.get()
@@ -579,6 +597,38 @@ class RefuelApp:
 
         tk.Button(btns, text="저장", bg=acc_var.get(), fg=BG, font=(F, 10, "bold"), bd=0,
                   relief="flat", cursor="hand2", command=save).pack(side="right", ipady=4, ipadx=20)
+
+    # ---------- QR 페어링 ----------
+    def _open_qr(self):
+        url = sync.pair_url()
+        alert_topic = sync.topic() + "-a"
+        win = tk.Toplevel(self.root, bg=BG)
+        win.title("폰 페어링")
+        win.configure(padx=20, pady=16)
+        tk.Label(win, text="1) 폰 카메라로 QR 스캔 → 대시보드 열림", bg=BG, fg=TX, font=(F, 10)).pack(anchor="w")
+        try:
+            import qrcode
+            from PIL import ImageTk
+            img = qrcode.make(url).resize((260, 260))
+            self._qr_photo = ImageTk.PhotoImage(img)
+            tk.Label(win, image=self._qr_photo, bg="white").pack(pady=10)
+        except Exception as e:
+            log.warning("QR 생성 실패: %s", e)
+            tk.Label(win, text="(QR 모듈 없음 - 아래 링크를 직접 열기)", bg=BG, fg=WARN, font=(F, 9)).pack(pady=6)
+        link = tk.Entry(win, bg=PANEL, fg=MUT, relief="flat", font=(F, 8),
+                        highlightbackground=BORDER, highlightthickness=1)
+        link.insert(0, url)
+        link.config(state="readonly")
+        link.pack(fill="x", ipady=3)
+        tk.Label(win, text="2) 푸시 알림: 폰에 ntfy 앱 설치 후 아래 토픽 구독",
+                 bg=BG, fg=TX, font=(F, 10)).pack(anchor="w", pady=(12, 2))
+        tp = tk.Entry(win, bg=PANEL, fg=MUT, relief="flat", font=(F, 9),
+                      highlightbackground=BORDER, highlightthickness=1)
+        tp.insert(0, alert_topic)
+        tp.config(state="readonly")
+        tp.pack(fill="x", ipady=3)
+        tk.Label(win, text="* 대시보드에서도 안내됨 · 나가는 데이터는 토큰 수·시각뿐",
+                 bg=BG, fg=MUT, font=(F, 8)).pack(anchor="w", pady=(8, 0))
 
     # ---------- 트레이 / 종료 ----------
     def _on_close(self):

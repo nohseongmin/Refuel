@@ -24,7 +24,8 @@ jobs:
       - name: Build exe
         run: >
           python -m PyInstaller --noconfirm --onefile --windowed --name Refuel
-          --collect-all pystray --collect-all PIL --collect-all winotify run.py
+          --collect-all pystray --collect-all PIL --collect-all winotify
+          --collect-all qrcode run.py
 
       - name: Release
         uses: softprops/action-gh-release@v2

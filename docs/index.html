@@ -1,0 +1,113 @@
+<!doctype html><html lang="ko"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Refuel</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d0f14">
+<style>
+:root{--bg:#0d0f14;--panel:#141821;--card:#11151d;--bd:#252c3a;--track:#0a0c11;
+--tx:#e7eaf0;--mut:#8a93a4;--acc:#46e08a;--warn:#f5c451;--dng:#f3766b;--blu:#5a8dee}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:'Malgun Gothic',system-ui,sans-serif;
+padding:max(16px,env(safe-area-inset-top)) 16px 32px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.brand{font-weight:700;font-size:17px;color:var(--acc)}
+.meta{font-size:11px;color:var(--mut)}
+.card{background:var(--panel);border:1px solid var(--bd);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.aname{font-size:13px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.count{font-size:40px;font-weight:700;font-family:Consolas,monospace;letter-spacing:1px;margin:6px 0 2px}
+.sub{font-size:11px;color:var(--mut);line-height:1.6}
+.bar{height:7px;background:var(--track);border-radius:5px;overflow:hidden;margin:10px 0 4px}
+.fill{height:100%;width:0%;background:var(--acc);transition:width .4s}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.mini{background:var(--card);border-radius:10px;padding:8px 12px}
+.mini .l{font-size:10px;color:var(--mut)}
+.mini .v{font-size:15px;font-weight:700;font-family:Consolas,monospace}
+.days{margin-top:10px}
+.drow{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:10px}
+.drow .dl{width:52px;color:var(--mut)}
+.drow .dt{flex:1;height:6px;background:var(--track);border-radius:4px;overflow:hidden}
+.drow .df{height:100%;background:var(--blu)}
+.drow .dv{width:44px;text-align:right;color:var(--mut);font-family:Consolas,monospace}
+.setup{background:var(--panel);border:1px dashed var(--bd);border-radius:14px;padding:16px;font-size:13px;line-height:1.9}
+.setup code{background:var(--card);padding:2px 6px;border-radius:6px;font-size:11px;word-break:break-all}
+button{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;
+padding:8px 14px;font-size:12px;margin-top:8px}
+a{color:var(--blu)}
+.stale{color:var(--warn)}
+</style></head><body>
+<div class="top"><div class="brand">● Refuel</div><div class="meta" id="meta">--</div></div>
+<div id="root"></div>
+<script>
+const $=s=>document.querySelector(s);
+const P=new URLSearchParams(location.hash.slice(1));
+if(P.get('t')){localStorage.rf_t=P.get('t');if(P.get('sv'))localStorage.rf_sv=P.get('sv');history.replaceState(null,'',location.pathname);}
+const T=localStorage.rf_t, SV=localStorage.rf_sv||'https://ntfy.sh';
+let state=null, lastFetch=0;
+const fmtN=v=>(v||0).toLocaleString('en-US');
+const fmtS=v=>{v=v||0;return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?Math.round(v/1e3)+'K':''+v};
+const WD=['월','화','수','목','금','토','일'];
+function dur(s){if(s==null)return'--:--:--';s=Math.max(0,Math.floor(s));
+ const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=s%60;
+ const b=[h,m,x].map(v=>String(v).padStart(2,'0')).join(':');return d?d+'일 '+b:b}
+function render(){
+ const r=$('#root');
+ if(!T){r.innerHTML=`<div class="setup"><b>페어링 필요</b><br>PC의 Refuel에서 ⚙ 설정 → <b>QR 페어링</b>을 눌러 QR을 스캔하세요.</div>`;return}
+ if(!state){r.innerHTML=`<div class="setup">데이터 기다리는 중… PC의 Refuel이 켜져 있고 ⚙에서 <b>폰 연동</b>이 ON인지 확인.</div>`;return}
+ const now=Date.now()/1000;
+ r.innerHTML=state.agents.map(a=>{
+  let count='충전완료',col='var(--acc)',prog=0,ratio=null,sub='활성 윈도우 없음 · 바로 사용 가능';
+  if(a.block&&a.block.reset>now){
+   const rem=a.block.reset-now;ratio=a.block.ratio;
+   col=(ratio!=null&&ratio>=0.8)?'var(--dng)':(rem<=1800?'var(--warn)':'var(--acc)');
+   count=dur(rem);prog=Math.min(1,(18000-rem)/18000);
+   const t=new Date(a.block.reset*1000);
+   sub=`5시간 리셋 ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')} · 윈도우 ${fmtN(a.block.tok)} 토큰`+(ratio!=null?` · 추정 ${Math.round(ratio*100)}%`:'');
+  }else if(a.wk&&a.wk.ratio!=null&&a.wk.ratio>=0.8&&a.wk.reset>now){
+   const rem=a.wk.reset-now;col='var(--dng)';count=dur(rem);prog=1-rem/(7*86400);
+   sub='주간 한도 도달 - 풀릴 때까지 대기';
+  }
+  let wkline='';
+  if(a.wk&&a.wk.reset){const wd=new Date(a.wk.reset*1000);
+   wkline=`주간 ${fmtN(a.week)} 토큰 · 리셋 ${WD[(wd.getDay()+6)%7]} ${String(wd.getHours()).padStart(2,'0')}:${String(wd.getMinutes()).padStart(2,'0')}`+(a.wk.ratio!=null?` · 추정 ${Math.round(a.wk.ratio*100)}%`:'');}
+  const mx=Math.max(...(a.daily||[[0,1]]).map(d=>d[1]),1);
+  const days=(a.daily||[]).slice().reverse().map(d=>{
+   const dt=new Date(d[0]+'T00:00:00');
+   const lbl=`${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')} ${WD[(dt.getDay()+6)%7]}`;
+   return `<div class="drow"><div class="dl">${lbl}</div><div class="dt"><div class="df" style="width:${(d[1]/mx*100).toFixed(0)}%"></div></div><div class="dv">${fmtS(d[1])}</div></div>`}).join('');
+  return `<div class="card"><div class="aname"><span>${a.name}</span></div>
+   <div class="count" style="color:${col}" data-reset="${a.block?a.block.reset:''}" data-wk="${a.wk?a.wk.reset:''}" data-ratio="${ratio==null?'':ratio}">${count}</div>
+   <div class="sub">${sub}</div><div class="bar"><div class="fill" style="width:${(prog*100).toFixed(1)}%;background:${col}"></div></div>
+   <div class="sub">${wkline}</div>
+   <div class="grid"><div class="mini"><div class="l">오늘</div><div class="v">${fmtN(a.today)}</div></div>
+   <div class="mini"><div class="l">이번 주</div><div class="v">${fmtN(a.week)}</div></div></div>
+   <div class="days">${days}</div></div>`}).join('')
+  +`<div class="setup" id="push"><b>🔔 푸시 알림 받기</b><br>
+   1) <a href="https://ntfy.sh/app" target="_blank">ntfy 앱 설치</a> (iOS/Android 무료)<br>
+   2) 앱에서 구독(Subscribe) → 토픽: <code>${T}-a</code>
+   <button onclick="navigator.clipboard.writeText('${T}-a');this.textContent='복사됨!'">토픽 복사</button></div>`;
+}
+function tickCount(){
+ const now=Date.now()/1000;
+ document.querySelectorAll('.count').forEach(el=>{
+  const r=parseFloat(el.dataset.reset), w=parseFloat(el.dataset.wk);
+  if(r&&r>now)el.textContent=dur(r-now);
+  else if(el.dataset.ratio===''&&w&&el.textContent.includes(':')&&!r)el.textContent=dur(w-now);
+ });
+}
+async function poll(){
+ if(!T)return;
+ try{
+  const res=await fetch(`${SV}/${T}-s/json?poll=1&since=all`,{cache:'no-store'});
+  const lines=(await res.text()).trim().split('\n').filter(Boolean);
+  for(let i=lines.length-1;i>=0;i--){
+   const m=JSON.parse(lines[i]);
+   if(m.event==='message'){state=JSON.parse(m.message);lastFetch=Date.now();break}
+  }
+  render();
+  const age=state?Math.round((Date.now()/1000)-state.ts):null;
+  $('#meta').innerHTML=state?(age>1200?`<span class="stale">PC ${Math.round(age/60)}분 전 응답</span>`:`동기화 ${new Date(lastFetch).toLocaleTimeString('ko-KR')}`):'대기 중';
+ }catch(e){$('#meta').textContent='연결 실패(오프라인?)'}
+}
+render();poll();setInterval(poll,30000);setInterval(tickCount,1000);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>
