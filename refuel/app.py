@@ -94,16 +94,27 @@ def _pick_font(root):
     return "Malgun Gothic"
 
 
+_APP = None  # 현재 앱 인스턴스 참조(트레이 풍선 알림용)
+
+
 def _notify(title, msg):
     log.info("알림: %s - %s", title, msg)
-    if not _HAVE_TOAST:
-        return
-    try:
-        t = Notification(app_id="Refuel", title=title, msg=msg)
-        t.set_audio(audio.Default, loop=False)
-        t.show()
-    except Exception as e:
-        log.warning("토스트 실패: %s", e)
+    # 1순위: 트레이 아이콘 풍선 알림(가장 안정적 - PowerShell/앱등록 불필요)
+    tray = getattr(_APP, "tray", None)
+    if tray is not None:
+        try:
+            tray.notify(msg, title)
+            return
+        except Exception as e:
+            log.warning("트레이 알림 실패: %s", e)
+    # 2순위: winotify 토스트(폴백)
+    if _HAVE_TOAST:
+        try:
+            t = Notification(app_id="Refuel", title=title, msg=msg)
+            t.set_audio(audio.Default, loop=False)
+            t.show()
+        except Exception as e:
+            log.warning("토스트 실패: %s", e)
 
 
 def _set_autostart(enable):
@@ -339,6 +350,8 @@ class RefuelApp:
         self._card_order = []
         self.expanded_id = None
         self.tray = None
+        global _APP
+        _APP = self
 
         self.root = tk.Tk()
         global F
@@ -472,7 +485,8 @@ class RefuelApp:
             s = dict(self.state)
             ready = self.ready
         if ready:
-            self.meta.config(text=f"{'알림 ON' if _HAVE_TOAST else '알림 OFF'} · 이벤트 {_fmt_n(s.get('total_events'))}")
+            on = "알림 ON" if (self.tray or _HAVE_TOAST) else "알림 OFF"
+            self.meta.config(text=f"{on} · 이벤트 {_fmt_n(s.get('total_events'))}")
         agents = sorted(s.get("agents", []),
                         key=lambda a: a["block"]["remaining_sec"] if a["block"] else 10 ** 9)
         self._reconcile(agents)
