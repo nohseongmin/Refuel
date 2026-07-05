@@ -329,12 +329,12 @@ class AgentCard:
             over = self.usage_ratio is not None and self.usage_ratio >= warn
             col = DNG if over else (WARN if rem <= core.CONFIG["reset_soon_min"] * 60 else acc)
             self._set_count(_fmt_dur(rem), col)
-            self._set_bars((18000 - rem) / 18000, self.usage_ratio, col)
+            self._set_bars((core.SESSION_WINDOW_SEC - rem) / core.SESSION_WINDOW_SEC, self.usage_ratio, col)
             return rem
         if self.primary == "weekly":
             rem = max(0, int((self.wk_reset - now).total_seconds())) if self.wk_reset else 0
             self._set_count(_fmt_long(rem), DNG)
-            self._set_bars(1 - rem / (7 * 86400), self.wk_ratio, DNG)
+            self._set_bars(1 - rem / core.WEEKLY_WINDOW_SEC, self.wk_ratio, DNG)
             return rem
         self._set_count("충전완료", acc)
         self.bar.delete("all")
@@ -493,7 +493,7 @@ class RefuelApp:
             on = "알림 ON" if (self.tray or _HAVE_TOAST) else "알림 OFF"
             self.meta.config(text=f"{on} · 이벤트 {_fmt_n(s.get('total_events'))}")
         agents = sorted(s.get("agents", []),
-                        key=lambda a: a["block"]["remaining_sec"] if a["block"] else 10 ** 9)
+                        key=lambda a: a["block"]["remaining_sec"] if a["block"] else core.SORT_LAST)
         self._reconcile(agents)
         soonest, soonest_name = None, ""
         for a in agents:

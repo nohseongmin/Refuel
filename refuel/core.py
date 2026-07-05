@@ -17,6 +17,10 @@ CONFIG_PATH = CONFIG_DIR / "config.json"
 DB_PATH = CONFIG_DIR / "history.db"
 LOG_PATH = CONFIG_DIR / "refuel.log"
 SESSION_WINDOW = timedelta(hours=5)     # Claude 구독 5시간 롤링 윈도우
+SESSION_WINDOW_SEC = int(SESSION_WINDOW.total_seconds())   # 18000 — UI 진행바 계산용(윈도우와 항상 일치)
+SECONDS_PER_DAY = 86400
+WEEKLY_WINDOW_SEC = 7 * SECONDS_PER_DAY  # 주간 윈도우 길이(초)
+SORT_LAST = 10 ** 9                      # 활성 블록 없는 에이전트를 정렬 맨 뒤로 보내는 센티넬
 
 log = logging.getLogger("refuel")
 
@@ -144,6 +148,17 @@ def codex_dirs():
 _cache = {}  # path -> ((mtime, size), [events])
 
 
+def _parse_iso_utc(ts):
+    """ISO8601 문자열 → UTC-aware datetime. 파싱 실패/빈값이면 None. tz 없으면 UTC로 간주."""
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _parse_claude_file(path, agent):
     events = []
     try:
@@ -159,15 +174,9 @@ def _parse_claude_file(path, agent):
                 usage = msg.get("usage")
                 if not isinstance(usage, dict):
                     continue
-                ts = obj.get("timestamp")
-                if not ts:
+                dt = _parse_iso_utc(obj.get("timestamp"))
+                if dt is None:
                     continue
-                try:
-                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                except Exception:
-                    continue
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
                 inp = usage.get("input_tokens", 0) or 0
                 out = usage.get("output_tokens", 0) or 0
                 cc = usage.get("cache_creation_input_tokens", 0) or 0
@@ -200,15 +209,9 @@ def _parse_codex_file(path, agent):
                 usage = info.get("last_token_usage") if isinstance(info, dict) else None
                 if not isinstance(usage, dict):
                     continue
-                ts = obj.get("timestamp") or payload.get("timestamp")
-                if not ts:
+                dt = _parse_iso_utc(obj.get("timestamp") or payload.get("timestamp"))
+                if dt is None:
                     continue
-                try:
-                    dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-                except Exception:
-                    continue
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
                 inp = usage.get("input_tokens", 0) or 0
                 out = usage.get("output_tokens", 0) or 0
                 cached = usage.get("cached_input_tokens", 0) or 0
@@ -384,6 +387,6 @@ def build_state():
         bd["id"] = aid
         bd["name"] = AGENTS.get(aid, {}).get("name", aid)
         agents.append(bd)
-    agents.sort(key=lambda a: a["block"]["remaining_sec"] if a["block"] else 10 ** 9)
+    agents.sort(key=lambda a: a["block"]["remaining_sec"] if a["block"] else SORT_LAST)
 
     return {"agents": agents, "total_events": len(events)}
