@@ -49,6 +49,7 @@ let state=null, lastFetch=0, cryptoKey=null;
 const fmtN=v=>num(v).toLocaleString('en-US');
 const fmtS=v=>{v=num(v);return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?Math.round(v/1e3)+'K':''+v};
 const WD=['월','화','수','목','금','토','일'];
+const WINDOW_SEC=18000, WEEK_SEC=7*86400; // 5시간 윈도우·주간 윈도우(초) — PC측 core.py와 동일
 function dur(s){if(s==null)return'--:--:--';s=Math.max(0,Math.floor(s));
  const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=s%60;
  const b=[h,m,x].map(v=>String(v).padStart(2,'0')).join(':');return d?d+'일 '+b:b}
@@ -80,11 +81,11 @@ function render(){
   if(a.block&&bReset>now){
    const rem=bReset-now;ratio=a.block.ratio==null?null:num(a.block.ratio);
    col=(ratio!=null&&ratio>=0.8)?'var(--dng)':(rem<=1800?'var(--warn)':'var(--acc)');
-   count=dur(rem);prog=Math.min(1,(18000-rem)/18000);
+   count=dur(rem);prog=Math.min(1,(WINDOW_SEC-rem)/WINDOW_SEC);
    const t=new Date(bReset*1000);
    sub=`5시간 리셋 ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')} · 윈도우 ${fmtN(a.block.tok)} 토큰`+(ratio!=null?` · 추정 ${Math.round(ratio*100)}%`:'');
   }else if(wkRatio!=null&&wkRatio>=0.8&&wkReset>now){
-   const rem=wkReset-now;col='var(--dng)';count=dur(rem);prog=1-rem/(7*86400);
+   const rem=wkReset-now;col='var(--dng)';count=dur(rem);prog=1-rem/WEEK_SEC;
    sub='주간 한도 도달 - 풀릴 때까지 대기';
   }
   let wkline='';
