@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import logging
+import queue
 import tkinter as tk
 import tkinter.font as tkfont
 from datetime import datetime, timezone
@@ -95,15 +96,13 @@ def _pick_font(root):
 
 
 _APP = None  # 현재 앱 인스턴스 참조(트레이 풍선 알림용)
+_notify_q = queue.Queue()  # 워커 스레드 → 메인 스레드 알림 전달 큐
 
 
-def _notify(title, msg):
-    log.info("알림: %s - %s", title, msg)
-    try:
-        sync.post_alert(title, msg)
-    except Exception as e:
-        log.warning("폰 알림 실패: %s", e)
-    # 1순위: 트레이 아이콘 풍선 알림(가장 안정적 - PowerShell/앱등록 불필요)
+def _deliver(title, msg):
+    """실제 화면 알림 표시. 반드시 Tk 메인 스레드에서 호출할 것 —
+    pystray 풍선은 워커 스레드에서 직접 부르면 예외 없이 조용히 안 뜬다."""
+    # 1순위: 트레이 아이콘 풍선 알림(PowerShell/앱등록 불필요)
     tray = getattr(_APP, "tray", None)
     if tray is not None:
         try:
@@ -119,6 +118,30 @@ def _notify(title, msg):
             t.show()
         except Exception as e:
             log.warning("토스트 실패: %s", e)
+
+
+def _drain_notifications():
+    """큐에 쌓인 알림을 실제로 표시. Tk 메인 스레드(_tick)에서만 호출된다."""
+    while True:
+        try:
+            title, msg = _notify_q.get_nowait()
+        except queue.Empty:
+            break
+        _deliver(title, msg)
+
+
+def _notify(title, msg):
+    """어느 스레드에서든 안전. 화면 표시는 큐에 넣어 메인 스레드(_tick)가 꺼내 처리한다.
+    워커 스레드에서 tray.notify를 직접 부르면 풍선이 조용히 안 뜨는 게 이 버그의 원인이었음."""
+    log.info("알림: %s - %s", title, msg)
+    try:
+        sync.post_alert(title, msg)
+    except Exception as e:
+        log.warning("폰 알림 실패: %s", e)
+    if getattr(_APP, "root", None) is not None:
+        _notify_q.put((title, msg))     # 메인 스레드 _tick 이 꺼내 표시
+    else:
+        _deliver(title, msg)            # 앱/메인루프 이전(단일 인스턴스 안내 등)
 
 
 def _set_autostart(enable):
@@ -486,6 +509,7 @@ class RefuelApp:
         self._apply_expand()
 
     def _tick(self):
+        _drain_notifications()          # 워커 스레드가 큐에 넣은 알림을 메인 스레드에서 표시
         with self.lock:
             s = dict(self.state)
             ready = self.ready
