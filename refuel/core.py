@@ -17,6 +17,8 @@ CONFIG_PATH = CONFIG_DIR / "config.json"
 DB_PATH = CONFIG_DIR / "history.db"
 LOG_PATH = CONFIG_DIR / "refuel.log"
 SESSION_WINDOW = timedelta(hours=5)     # Claude 구독 5시간 롤링 윈도우
+BURN_LOOKBACK_MIN = 30                  # 소진 예측: 소모속도 측정 구간(분)
+BURN_MIN_ELAPSED_MIN = 5                # 소진 예측: 최소 관측 시간(분) - 미달 시 예측 안 함
 SESSION_WINDOW_SEC = int(SESSION_WINDOW.total_seconds())   # 18000 — UI 진행바 계산용(윈도우와 항상 일치)
 SECONDS_PER_DAY = 86400
 WEEKLY_WINDOW_SEC = 7 * SECONDS_PER_DAY  # 주간 윈도우 길이(초)
@@ -48,6 +50,7 @@ DEFAULTS = {
     "sync_enabled": False,       # 폰 연동(베타): ntfy 릴레이로 상태/알림 전송
     "sync_topic": "",            # 최초 활성화 시 랜덤 생성
     "sync_key": "",              # E2E 암호화 키(hex, QR로만 전달)
+    "check_updates": True,       # GitHub 릴리스 새 버전 확인(읽기 전용, 하루 1회)
     "sync_server": "https://ntfy.sh",
     "sync_app_url": "https://nohseongmin.github.io/Refuel/",
 }
@@ -338,14 +341,29 @@ def _agent_breakdown(events, agent, now, now_local, today, wk_reset, wk_next):
         completed = blocks[:-1] if is_active else blocks
         ceiling = max((b["tokens"] for b in completed), default=0)
         if is_active:
+            remaining = max(0, int((end - now).total_seconds()))
             block = {
                 "tokens": last["tokens"], "inp": last["inp"], "out": last["out"],
                 "cache": last["cache"], "events": last["events"],
                 "start": last["start"].astimezone(),
                 "reset_at": end.astimezone(),
-                "remaining_sec": max(0, int((end - now).total_seconds())),
+                "remaining_sec": remaining,
                 "ratio": (last["tokens"] / ceiling) if ceiling else None,
+                "rate_min": 0, "eta": None,
             }
+            # 소진 예측: 최근 30분 소모 속도로 리셋 전 한도 도달 여부 추정
+            lookback = timedelta(minutes=BURN_LOOKBACK_MIN)
+            win_start = max(last["start"], now - lookback)
+            elapsed_min = (now - win_start).total_seconds() / 60
+            if elapsed_min >= BURN_MIN_ELAPSED_MIN:
+                recent = sum(e["total"] for e in events
+                             if e["ts"] >= win_start and e["ts"] <= now)
+                rate = recent / elapsed_min
+                block["rate_min"] = int(rate)
+                if ceiling and rate > 0 and last["tokens"] < ceiling:
+                    eta_sec = (ceiling - last["tokens"]) / rate * 60
+                    if eta_sec < remaining:
+                        block["eta"] = (now + timedelta(seconds=eta_sec)).astimezone()
     wk_ceiling = _weekly_ceiling(agent, CONFIG["weekly_reset_dow"], today)
     weekly = {
         "tokens": week_tok,

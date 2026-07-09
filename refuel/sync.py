@@ -124,7 +124,8 @@ def _compact(state):
             "id": a["id"], "name": a["name"],
             "today": a.get("today_tokens", 0), "week": a.get("week_tokens", 0),
             "block": ({"reset": _epoch(b["reset_at"]), "tok": b["tokens"],
-                       "ratio": b["ratio"]} if b else None),
+                       "ratio": b["ratio"],
+                       "eta": _epoch(b["eta"]) if b.get("eta") else None} if b else None),
             "wk": {"reset": _epoch(wk.get("reset_at")), "ratio": wk.get("ratio")},
             "daily": [[d.isoformat(), v] for d, v in a.get("daily", [])],
         })

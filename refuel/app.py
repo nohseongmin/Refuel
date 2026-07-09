@@ -15,9 +15,31 @@ import tkinter as tk
 import tkinter.font as tkfont
 from datetime import datetime, timezone
 
-from . import core, sync
+import json as _json
+import re as _re
+import urllib.request as _urlreq
+
+from . import core, sync, __version__
 
 log = logging.getLogger("refuel")
+
+_RELEASES_API = "https://api.github.com/repos/nohseongmin/Refuel/releases/latest"
+_RELEASES_URL = "github.com/nohseongmin/Refuel/releases"
+
+
+def _parse_ver(v):
+    try:
+        return tuple(int(x) for x in _re.sub(r"[^0-9.]", "", str(v)).split(".") if x)
+    except Exception:
+        return ()
+
+
+def _latest_release_tag():
+    """GitHub 최신 릴리스 태그 조회(읽기 전용). 실패 시 None."""
+    req = _urlreq.Request(_RELEASES_API, headers={
+        "Accept": "application/vnd.github+json", "User-Agent": "Refuel"})
+    with _urlreq.urlopen(req, timeout=8) as r:
+        return _json.load(r).get("tag_name")
 
 # ---------------- 팔레트 ----------------
 BG = "#0d0f14"
@@ -249,6 +271,8 @@ class AgentCard:
         self.sub.pack(anchor="w", padx=16, pady=(4, 2))
         self.bd = tk.Label(d, text="", bg=PANEL, fg=MUT, font=(F, 9))
         self.bd.pack(anchor="w", padx=16, pady=(0, 2))
+        self.pred = tk.Label(d, text="", bg=PANEL, fg=MUT, font=(F, 9))
+        self.pred.pack(anchor="w", padx=16, pady=(0, 2))
         self.wk = tk.Label(d, text="", bg=PANEL, fg=MUT, font=(F, 9))
         self.wk.pack(anchor="w", padx=16, pady=(0, 4))
         self.bar = tk.Canvas(d, height=8, bg=TRACK, highlightthickness=0)
@@ -288,11 +312,20 @@ class AgentCard:
             extra = f" · 추정한도 {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
             self.sub.config(text=f"5시간 리셋 {b['reset_at'].strftime('%H:%M')} · 윈도우 {_fmt_n(b['tokens'])} 토큰{extra}")
             self.bd.config(text=f"입력 {_fmt_short(b['inp'])} · 출력 {_fmt_short(b['out'])} · 캐시 {_fmt_short(b['cache'])}")
+            rate = b.get("rate_min") or 0
+            eta = b.get("eta")
+            if eta is not None:
+                self.pred.config(text=f"⚠ 예측: 분당 {_fmt_short(rate)} · 이 속도면 {eta.strftime('%H:%M')} 한도 소진", fg=DNG)
+            elif rate > 0:
+                self.pred.config(text=f"예측: 분당 {_fmt_short(rate)} · 리셋까지 여유", fg=MUT)
+            else:
+                self.pred.config(text="")
         else:
             self.reset_at = None
             self.usage_ratio = None
             self.cw_val.config(text="0")
             self.bd.config(text="")
+            self.pred.config(text="")
             if wk_over:
                 self.primary = "weekly"
                 self.sub.config(text="주간 한도 도달 - 풀릴 때까지 대기")
@@ -390,6 +423,7 @@ class RefuelApp:
         self._build_ui()
 
         threading.Thread(target=self._worker, daemon=True).start()
+        threading.Thread(target=self._update_checker, daemon=True).start()
         self._tick()
 
     def accent(self):
@@ -432,7 +466,8 @@ class RefuelApp:
         for a in s.get("agents", []):
             live.add(a["id"])
             ns = self._ns.setdefault(a["id"], {"last_start": None, "warned_ratio": False,
-                                               "warned_soon": False, "wk_reset": None, "wk_warned": False})
+                                               "warned_soon": False, "wk_reset": None, "wk_warned": False,
+                                               "warned_eta": False})
             nm, b, wk = a["name"], a["block"], a.get("weekly") or {}
 
             # --- 주간 한도 ---
@@ -457,7 +492,12 @@ class RefuelApp:
             if ns["last_start"] != b["start"]:
                 if ns["last_start"] is not None:
                     _notify(f"{nm} 재충전 완료", "새 5시간 윈도우 시작.")
-                ns.update(last_start=b["start"], warned_ratio=False, warned_soon=False)
+                ns.update(last_start=b["start"], warned_ratio=False, warned_soon=False,
+                          warned_eta=False)
+            eta = b.get("eta")
+            if eta is not None and not ns["warned_eta"]:
+                _notify(f"{nm} 소진 예측", f"이 속도면 {eta.strftime('%H:%M')}쯤 한도 도달 예상. 아껴 써.")
+                ns["warned_eta"] = True
             if 0 < b["remaining_sec"] <= soon_sec and not ns["warned_soon"]:
                 _notify(f"{nm} 리셋 임박", f"{b['remaining_sec'] // 60}분 뒤 5시간 리셋.")
                 ns["warned_soon"] = True
@@ -479,6 +519,20 @@ class RefuelApp:
             except Exception:
                 log.exception("스캔 실패")
             time.sleep(REFRESH_SECONDS)
+
+    def _update_checker(self):
+        """하루 1회 새 릴리스 확인. 발견 시 1회 알림 후 종료. 설정으로 끔 가능."""
+        time.sleep(10)
+        while True:
+            if core.CONFIG.get("check_updates", True):
+                try:
+                    tag = _latest_release_tag()
+                    if tag and _parse_ver(tag) > _parse_ver(__version__):
+                        _notify("업데이트 있음", f"Refuel {tag} 나왔어 - {_RELEASES_URL}")
+                        return
+                except Exception as e:
+                    log.info("업데이트 확인 실패(무시): %s", e)
+            time.sleep(86400)
 
     # ---------- 렌더 ----------
     def toggle(self, aid):
@@ -575,8 +629,10 @@ class RefuelApp:
                            selectcolor=PANEL, activebackground=BG, activeforeground=TX,
                            bd=0, highlightthickness=0).pack(anchor="w", pady=(10, 0))
 
+        upd_var = tk.BooleanVar(value=cfg.get("check_updates", True))
         check("창 닫으면 트레이로 (우클릭 종료로만 완전 종료)", tray_var)
         check("윈도우 시작 시 자동 실행 (트레이로 조용히)", auto_var)
+        check("새 버전 자동 확인 (GitHub, 하루 1회)", upd_var)
 
         sync_var = tk.BooleanVar(value=cfg.get("sync_enabled", False))
         syncrow = tk.Frame(win, bg=BG)
@@ -612,6 +668,7 @@ class RefuelApp:
                 pass
             cfg["minimize_to_tray"] = tray_var.get()
             cfg["sync_enabled"] = sync_var.get()
+            cfg["check_updates"] = upd_var.get()
             cfg["accent"] = acc_var.get()
             if auto_var.get() != cfg["autostart"]:
                 cfg["autostart"] = auto_var.get()

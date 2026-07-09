@@ -84,6 +84,8 @@ function render(){
    count=dur(rem);prog=Math.min(1,(WINDOW_SEC-rem)/WINDOW_SEC);
    const t=new Date(bReset*1000);
    sub=`5시간 리셋 ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')} · 윈도우 ${fmtN(a.block.tok)} 토큰`+(ratio!=null?` · 추정 ${Math.round(ratio*100)}%`:'');
+   const eta=a.block.eta?num(a.block.eta):0;
+   if(eta>now){const et=new Date(eta*1000);sub+=` · ⚠소진예상 ${String(et.getHours()).padStart(2,'0')}:${String(et.getMinutes()).padStart(2,'0')}`;col='var(--warn)';}
   }else if(wkRatio!=null&&wkRatio>=0.8&&wkReset>now){
    const rem=wkReset-now;col='var(--dng)';count=dur(rem);prog=1-rem/WEEK_SEC;
    sub='주간 한도 도달 - 풀릴 때까지 대기';
