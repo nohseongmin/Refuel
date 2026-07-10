@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.nohseongmin.refuel",
+      "sha256_cert_fingerprints": [
+        "56:AE:F7:54:63:FB:74:A8:AF:35:D5:50:25:A5:32:EC:C9:F7:DC:84:6B:29:B4:28:BC:0F:DF:31:79:AD:11:D1"
+      ]
+    }
+  }
+]

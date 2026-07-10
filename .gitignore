@@ -16,3 +16,8 @@ dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# Android TWA - 서명키/비밀번호/빌드산출물은 절대 커밋 금지
+android/*
+!android/twa-manifest.json
+!android/store-listing.md
