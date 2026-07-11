@@ -152,14 +152,16 @@ def _drain_notifications():
         _deliver(title, msg)
 
 
-def _notify(title, msg):
+def _notify(title, msg, phone=True):
     """어느 스레드에서든 안전. 화면 표시는 큐에 넣어 메인 스레드(_tick)가 꺼내 처리한다.
-    워커 스레드에서 tray.notify를 직접 부르면 풍선이 조용히 안 뜨는 게 이 버그의 원인이었음."""
+    워커 스레드에서 tray.notify를 직접 부르면 풍선이 조용히 안 뜨는 게 이 버그의 원인이었음.
+    phone=False면 PC에만 표시(예: 재충전 완료는 예약 발송이 폰 담당 - 중복 방지)."""
     log.info("알림: %s - %s", title, msg)
-    try:
-        sync.post_alert(title, msg)
-    except Exception as e:
-        log.warning("폰 알림 실패: %s", e)
+    if phone:
+        try:
+            sync.post_alert(title, msg)
+        except Exception as e:
+            log.warning("폰 알림 실패: %s", e)
     if getattr(_APP, "root", None) is not None:
         _notify_q.put((title, msg))     # 메인 스레드 _tick 이 꺼내 표시
     else:
@@ -486,12 +488,18 @@ class RefuelApp:
             # --- 5시간 윈도우 ---
             if b is None:
                 if ns["last_start"] is not None:
-                    _notify(f"{nm} 재충전 완료", "5시간 윈도우 리셋됨.")
+                    # 폰 복사본은 예약 발송이 담당 → PC 풍선만
+                    _notify(f"{nm} 재충전 완료", "5시간 윈도우 리셋됨.", phone=False)
                     ns.update(last_start=None, warned_ratio=False, warned_soon=False)
                 continue
+            # 리셋 시각 푸시를 ntfy에 예약(PC 꺼져 있어도 도착, 블록당 1회)
+            try:
+                sync.schedule_refill(a["id"], nm, b["start"], b["reset_at"])
+            except Exception as e:
+                log.warning("예약 발송 실패: %s", e)
             if ns["last_start"] != b["start"]:
                 if ns["last_start"] is not None:
-                    _notify(f"{nm} 재충전 완료", "새 5시간 윈도우 시작.")
+                    _notify(f"{nm} 재충전 완료", "새 5시간 윈도우 시작.", phone=False)
                 ns.update(last_start=b["start"], warned_ratio=False, warned_soon=False,
                           warned_eta=False)
             eta = b.get("eta")

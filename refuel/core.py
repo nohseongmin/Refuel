@@ -51,6 +51,7 @@ DEFAULTS = {
     "sync_topic": "",            # 최초 활성화 시 랜덤 생성
     "sync_key": "",              # E2E 암호화 키(hex, QR로만 전달)
     "check_updates": True,       # GitHub 릴리스 새 버전 확인(읽기 전용, 하루 1회)
+    "sync_scheduled": {},        # 에이전트별 마지막 예약 블록(중복 예약 방지)
     "sync_server": "https://ntfy.sh",
     "sync_app_url": "https://nohseongmin.github.io/Refuel/",
 }

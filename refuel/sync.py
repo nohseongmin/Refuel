@@ -108,6 +108,31 @@ def post_alert(title, msg):
            "priority": 4, "tags": ["zap"]})
 
 
+def schedule_refill(agent_id, name, block_start, reset_at):
+    """'재충전 완료' 푸시를 리셋 시각으로 ntfy 서버에 예약.
+
+    윈도우 시작 시 1회 예약해두면 PC가 꺼져 있어도 ntfy가 정시에 발송한다.
+    (리셋 시각 = 시작+5h로 확정이라 취소 불필요. 블록당 1회만 - config에 기록해 중복 방지)
+    """
+    if not enabled():
+        return
+    remaining = (reset_at - datetime.now().astimezone()).total_seconds()
+    if remaining < 60:            # ntfy 최소 지연 여유 + 임박 블록은 라이브 경로에 맡김
+        return
+    sched = core.CONFIG.get("sync_scheduled") or {}
+    key = block_start.isoformat()
+    if sched.get(agent_id) == key:
+        return
+    sched[agent_id] = key
+    core.CONFIG["sync_scheduled"] = sched
+    core.save_config()
+    _fire({"topic": topic() + "-a", "title": f"{name} 재충전 완료",
+           "message": "5시간 윈도우 리셋! 다시 써도 돼. (예약 발송 - PC 꺼져 있어도 도착)",
+           "priority": 4, "tags": ["zap"],
+           "delay": str(int(reset_at.timestamp()))})
+    log.info("재충전 푸시 예약: %s @ %s", name, reset_at.strftime("%H:%M"))
+
+
 def _epoch(dt):
     try:
         return int(dt.timestamp())
