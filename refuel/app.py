@@ -784,8 +784,66 @@ class RefuelApp:
             log.warning("트레이 시작 실패: %s", e)
             self.tray = None
 
+    def _consent_gate(self):
+        """최초 실행 시 면책조항 동의를 받는다. 동의하지 않으면 False."""
+        if core.has_consented():
+            return True
+        self.root.deiconify()
+        win = tk.Toplevel(self.root, bg=BG)
+        win.title("Refuel — 사용 동의")
+        win.configure(padx=22, pady=20)
+        win.resizable(False, False)
+        win.transient(self.root)
+        result = {"ok": False}
+
+        tk.Label(win, text="사용 전 동의", bg=BG, fg=self.accent(),
+                 font=(F, 14, "bold")).pack(anchor="w")
+        box = tk.Text(win, width=52, height=15, bg=PANEL, fg=TX, bd=0,
+                      relief="flat", wrap="word", font=(F, 9),
+                      padx=12, pady=10, highlightbackground=BORDER, highlightthickness=1)
+        box.insert("1.0", core.DISCLAIMER_TEXT)
+        box.config(state="disabled")
+        box.pack(fill="both", expand=True, pady=(10, 12))
+
+        agree = tk.BooleanVar(value=False)
+        btn = tk.Button(win, text="동의하고 시작", bg=BORDER, fg=MUT, font=(F, 10, "bold"),
+                        bd=0, relief="flat", state="disabled")
+
+        def toggle():
+            if agree.get():
+                btn.config(state="normal", bg=self.accent(), fg=BG, cursor="hand2")
+            else:
+                btn.config(state="disabled", bg=BORDER, fg=MUT, cursor="")
+
+        tk.Checkbutton(win, text="위 내용을 읽었으며 이에 동의합니다.", variable=agree,
+                       command=toggle, bg=BG, fg=TX, font=(F, 10), selectcolor=PANEL,
+                       activebackground=BG, activeforeground=TX, bd=0,
+                       highlightthickness=0).pack(anchor="w")
+
+        def accept():
+            core.set_consented()
+            result["ok"] = True
+            win.destroy()
+
+        btn.config(command=accept)
+        row = tk.Frame(win, bg=BG)
+        row.pack(fill="x", pady=(14, 0))
+        tk.Button(row, text="동의 안 함 (종료)", bg=BG, fg=MUT, font=(F, 9), bd=0,
+                  relief="flat", activebackground=BG, cursor="hand2",
+                  command=win.destroy).pack(side="left")
+        btn.pack(in_=row, side="right", ipadx=16, ipady=5)
+
+        win.protocol("WM_DELETE_WINDOW", win.destroy)
+        win.grab_set()
+        self.root.wait_window(win)
+        return result["ok"]
+
     def run(self):
         self._start_tray()
+        if not self._consent_gate():
+            log.info("면책조항 미동의 - 종료")
+            self._quit()
+            return
         if core.CONFIG["autostart"]:
             _set_autostart(True)
         if self.start_hidden and self.tray:

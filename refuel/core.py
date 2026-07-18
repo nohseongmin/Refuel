@@ -54,8 +54,32 @@ DEFAULTS = {
     "sync_scheduled": {},        # 에이전트별 마지막 예약 블록(중복 예약 방지)
     "sync_server": "https://ntfy.sh",
     "sync_app_url": "https://nohseongmin.github.io/Refuel/",
+    "consented": "",             # 동의한 면책조항 버전(빈 값이면 최초 실행 시 동의 요구)
 }
 CONFIG = dict(DEFAULTS)
+
+# 면책조항 버전 — 내용이 바뀌면 올려서 재동의를 받는다.
+DISCLAIMER_VERSION = "1"
+DISCLAIMER_TEXT = (
+    "Refuel은 비공식 도구이며 Anthropic·OpenAI·Cursor 등 어떤 회사와도 무관합니다.\n\n"
+    "• 표시되는 한도·리셋 시각·소진 예측은 로컬 로그를 바탕으로 한 추정치이며, "
+    "정확성을 보장하지 않습니다. 참고용으로만 사용하세요.\n\n"
+    "• '폰 연동'을 켠 경우에 한해, 토큰 사용량 수치·시각·에이전트 이름이 암호화되어 "
+    "중계 서비스(ntfy)를 거쳐 본인 기기로 전송됩니다. 코드·프롬프트·API 키는 전송되지 "
+    "않으며, 개발자는 그 데이터에 접근할 수 없습니다. 폰 연동은 기본 꺼져 있고 언제든 끌 수 있습니다.\n\n"
+    "• 이 소프트웨어는 '있는 그대로' 제공되며 어떠한 보증도 하지 않습니다. "
+    "사용으로 발생하는 결과에 대한 책임은 사용자 본인에게 있습니다.\n\n"
+    "• 전체 소스코드는 github.com/nohseongmin/Refuel 에서 확인할 수 있습니다."
+)
+
+
+def has_consented():
+    return CONFIG.get("consented") == DISCLAIMER_VERSION
+
+
+def set_consented():
+    CONFIG["consented"] = DISCLAIMER_VERSION
+    save_config()
 
 
 def load_config():
