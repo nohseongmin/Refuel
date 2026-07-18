@@ -117,91 +117,36 @@ def _pick_font(root):
     return "Malgun Gothic"
 
 
-_APP = None  # 현재 앱 인스턴스 참조(트레이 풍선 알림용)
+_APP = None  # 현재 앱 인스턴스 참조(트레이 폴백용)
 _notify_q = queue.Queue()  # 워커 스레드 → 메인 스레드 알림 전달 큐
-_toasts = []               # 화면에 떠 있는 자체 토스트 창들(쌓기용)
-TOAST_MS = 12000           # 자체 토스트 표시 시간(ms)
-TOAST_MARGIN = 24          # 화면 우측 여백(px)
-TOAST_BOTTOM = 56          # 작업표시줄 위 여백(px)
-
-
-def _show_toast(title, msg):
-    """자체 토스트 창(우하단, 클릭하면 앱 열림, 자동 사라짐).
-
-    OS 알림 시스템(트레이 풍선/winotify)은 Windows가 예외 없이 조용히 삼키는 일이
-    있어서 - 실제로 '재충전 완료'가 로그에는 남았는데 화면에 안 뜨는 버그가 났다 -
-    화면 표시는 우리가 직접 그린다. 그러면 OS가 삼킬 방법이 없다.
-    """
-    root = getattr(_APP, "root", None)
-    if root is None:
-        return False
-    try:
-        acc = core.CONFIG.get("accent", "#46e08a")
-        t = tk.Toplevel(root)
-        t.overrideredirect(True)          # 타이틀바 없음
-        t.attributes("-topmost", True)    # 항상 위
-        t.configure(bg=BORDER)
-        frame = tk.Frame(t, bg=PANEL)
-        frame.pack(padx=1, pady=1, fill="both", expand=True)
-        tk.Frame(frame, bg=acc, width=4).pack(side="left", fill="y")   # 좌측 강조 바
-        body = tk.Frame(frame, bg=PANEL)
-        body.pack(side="left", fill="both", expand=True, padx=(12, 16), pady=11)
-        tk.Label(body, text=title, bg=PANEL, fg=acc, font=(F, 11, "bold")).pack(anchor="w")
-        tk.Label(body, text=msg, bg=PANEL, fg=TX, font=(F, 9),
-                 justify="left", wraplength=300).pack(anchor="w", pady=(3, 0))
-
-        t.update_idletasks()
-        w, h = t.winfo_width(), t.winfo_height()
-        sw, sh = t.winfo_screenwidth(), t.winfo_screenheight()
-        _toasts.append(t)
-        idx = len(_toasts) - 1            # 여러 개면 위로 쌓기
-        t.geometry(f"+{sw - w - TOAST_MARGIN}+{sh - h - TOAST_BOTTOM - idx * (h + 8)}")
-
-        def close(_=None):
-            try:
-                if t in _toasts:
-                    _toasts.remove(t)
-                t.destroy()
-            except Exception:
-                pass
-
-        def open_app(_=None):
-            app = _APP
-            if app is not None:
-                app._show()
-            close()
-
-        for wdg in (t, frame, body):
-            wdg.bind("<Button-1>", open_app)
-        t.after(TOAST_MS, close)
-        return True
-    except Exception as e:
-        log.warning("자체 토스트 실패: %s", e)
-        return False
 
 
 def _deliver(title, msg):
-    """실제 화면 알림 표시. 반드시 Tk 메인 스레드에서 호출할 것."""
+    """실제 화면 알림 표시. 반드시 Tk 메인 스레드에서 호출할 것.
+
+    이 PC에서 실측 결과 winotify(윈도우 네이티브 토스트)만 화면에 뜬다.
+    - 자체 토스트: 앱이 트레이(백그라운드)면 root가 withdraw라 화면에 안 그려짐 → 제거
+    - win11toast: 이 PC에선 안 뜸 → 미사용
+    winotify 는 subprocess를 DEVNULL+STARTUPINFO로 돌려 콘솔 없는 exe에서도 안전.
+    """
     channel = None
-    if _show_toast(title, msg):           # 1순위: 자체 토스트(OS가 못 삼킴)
-        channel = "self"
-    else:
+    if _HAVE_TOAST:                       # 1순위: winotify (실측으로 뜨는 게 확인됨)
+        try:
+            n = Notification(app_id="Refuel", title=title, msg=msg)
+            n.set_audio(audio.Default, loop=False)
+            n.show()
+            channel = "winotify"
+        except Exception as e:
+            log.warning("winotify 실패: %s", e)
+    if channel is None:                   # 2순위: 트레이 풍선(폴백)
         tray = getattr(_APP, "tray", None)
-        if tray is not None:              # 2순위: 트레이 풍선
+        if tray is not None:
             try:
                 tray.remove_notification()
                 tray.notify(msg, title)
                 channel = "tray"
             except Exception as e:
                 log.warning("트레이 알림 실패: %s", e)
-        if channel is None and _HAVE_TOAST:   # 3순위: winotify
-            try:
-                n = Notification(app_id="Refuel", title=title, msg=msg)
-                n.set_audio(audio.Default, loop=False)
-                n.show()
-                channel = "winotify"
-            except Exception as e:
-                log.warning("토스트 실패: %s", e)
     log.info("알림 표시: %s [%s]", title, channel or "실패-표시안됨")
 
 
