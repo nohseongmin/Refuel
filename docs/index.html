@@ -50,7 +50,18 @@ const P=new URLSearchParams(location.hash.slice(1));
 if(P.get('t')){localStorage.rf_t=P.get('t');if(P.get('k'))localStorage.rf_k=P.get('k');
  if(P.get('sv'))localStorage.rf_sv=P.get('sv');history.replaceState(null,'',location.pathname);}
 const T=localStorage.rf_t, K=localStorage.rf_k, SV=localStorage.rf_sv||'https://ntfy.sh';
+const DEMO = P.get('demo')!==null || !T;   // 미페어링 또는 #demo → 샘플 데이터 미리보기
 let state=null, lastFetch=0, cryptoKey=null;
+function demoState(){
+ const now=Date.now()/1000, day=86400, base=new Date();
+ const sampleM=[69,31,22,88,14,52,20], daily=[];
+ for(let i=6;i>=0;i--){const d=new Date(base);d.setDate(d.getDate()-i);
+  daily.push([d.toISOString().slice(0,10), sampleM[6-i]*1e6]);}
+ return {ts:now, total_events:1287, agents:[{
+  id:'claude-code', name:'Claude Code', today:20450000, week:174000000,
+  block:{reset:now+2*3600+15*60+30, tok:3585015, ratio:0.45, eta:null},
+  wk:{reset:now+3*day+4*3600, ratio:0.62}, daily}]};
+}
 const fmtN=v=>num(v).toLocaleString('en-US');
 const fmtS=v=>{v=num(v);return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?Math.round(v/1e3)+'K':''+v};
 const WD=['월','화','수','목','금','토','일'];
@@ -73,9 +84,11 @@ async function decrypt(msg){
 }
 function render(){
  const r=$('#root');
- if(!T){r.innerHTML=`<div class="setup"><b>페어링 필요</b><br>PC의 Refuel에서 ⚙ 설정 → <b>QR 페어링</b>을 눌러 QR을 스캔하세요.</div>`;return}
- if(!K){r.innerHTML=`<div class="setup"><b>재페어링 필요</b><br>보안 업데이트로 암호화가 적용됐어요. PC에서 QR을 다시 스캔하세요.</div>`;return}
- if(!state){r.innerHTML=`<div class="setup">데이터 기다리는 중… PC의 Refuel이 켜져 있고 ⚙에서 <b>폰 연동</b>이 ON인지 확인.</div>`;return}
+ if(!DEMO){
+  if(!T){r.innerHTML=`<div class="setup"><b>페어링 필요</b><br>PC의 Refuel에서 ⚙ 설정 → <b>QR 페어링</b>을 눌러 QR을 스캔하세요.</div>`;return}
+  if(!K){r.innerHTML=`<div class="setup"><b>재페어링 필요</b><br>보안 업데이트로 암호화가 적용됐어요. PC에서 QR을 다시 스캔하세요.</div>`;return}
+  if(!state){r.innerHTML=`<div class="setup">데이터 기다리는 중… PC의 Refuel이 켜져 있고 ⚙에서 <b>폰 연동</b>이 ON인지 확인.</div>`;return}
+ }
  const now=Date.now()/1000;
  const agents=Array.isArray(state.agents)?state.agents:[];
  r.innerHTML=agents.map(a=>{
@@ -111,12 +124,17 @@ function render(){
    <div class="grid"><div class="mini"><div class="l">오늘</div><div class="v">${fmtN(a.today)}</div></div>
    <div class="mini"><div class="l">이번 주</div><div class="v">${fmtN(a.week)}</div></div></div>
    <div class="days">${days}</div></div>`}).join('')
-  +`<div class="setup" id="push"><b>🔔 푸시 알림 받기</b><br>
+  +(DEMO
+   ? `<div class="setup"><b>🎬 데모 · 샘플 데이터</b><br>실제 내 PC의 사용량을 보려면 연결하세요.<br>
+      1) PC에 <a href="https://github.com/nohseongmin/Refuel/releases/latest" target="_blank" rel="noopener noreferrer">Refuel 데스크톱</a> 설치<br>
+      2) ⚙ 설정 → QR 페어링 → 이 화면을 카메라로 스캔<br>
+      <span style="color:var(--mut);font-size:11px">표시 값은 추정치입니다. 사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`
+   : `<div class="setup" id="push"><b>🔔 푸시 알림 받기</b><br>
    1) <a href="https://ntfy.sh/app" target="_blank" rel="noopener noreferrer">ntfy 앱 설치</a> (iOS/Android 무료)<br>
-   2) 앱에서 구독(Subscribe) → 토픽: <code>${esc(T)}-a</code>
+   2) 앱에서 구독(Subscribe) → 토픽: <code>${esc(T||'')}-a</code>
    <button id="cpbtn">토픽 복사</button><br>
    <span style="color:var(--mut);font-size:11px">🔒 상태 데이터는 종단간 암호화(AES-GCM) — 릴레이 서버는 암호문만 봅니다.</span><br>
-   <span style="color:var(--mut);font-size:11px">표시 값은 추정치입니다. 사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`;
+   <span style="color:var(--mut);font-size:11px">표시 값은 추정치입니다. 사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`);
  const b=$('#cpbtn');if(b)b.onclick=()=>{navigator.clipboard.writeText(T+'-a');b.textContent='복사됨!'};
 }
 function tickCount(){
@@ -142,6 +160,7 @@ async function poll(){
   $('#meta').innerHTML=state?(age>1200?`<span class="stale">PC ${Math.round(age/60)}분 전 응답</span>`:`동기화 ${new Date(lastFetch).toLocaleTimeString('ko-KR')} 🔒`):'대기 중';
  }catch(e){$('#meta').textContent='연결 실패(오프라인?)'}
 }
-render();poll();setInterval(poll,30000);setInterval(tickCount,1000);
+if(DEMO){state=demoState();render();$('#meta').textContent='데모 · 샘플 데이터';setInterval(tickCount,1000);}
+else{render();poll();setInterval(poll,30000);setInterval(tickCount,1000);}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
