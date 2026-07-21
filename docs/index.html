@@ -62,6 +62,38 @@ function demoState(){
   block:{reset:now+2*3600+15*60+30, tok:3585015, ratio:0.45, eta:null},
   wk:{reset:now+3*day+4*3600, ratio:0.62}, daily}]};
 }
+
+// ---- 진단 로그 (유지보수용) ----
+// 보안: 토픽·암호화 키는 절대 기록하지 않는다(로그 공유 = 계정 탈취가 되면 안 됨).
+const LOG_MAX=300, LOG_KEY='rf_log';
+const pollState={ok:null,badLogged:false};   // 로그 스팸 방지(상태 전환 시에만 기록)
+let LOG=[];
+try{LOG=JSON.parse(localStorage.getItem(LOG_KEY)||'[]')}catch(e){LOG=[]}
+function rlog(level,msg){
+ LOG.push({t:new Date().toISOString(),l:level,m:String(msg).slice(0,400)});
+ if(LOG.length>LOG_MAX)LOG=LOG.slice(-LOG_MAX);
+ try{localStorage.setItem(LOG_KEY,JSON.stringify(LOG))}catch(_){}
+ (level==='error'?console.error:console.log)('[refuel]',msg);
+ const b=$('#logbox');if(b)b.textContent=logTail();
+}
+function logTail(n=40){
+ return LOG.slice(-n).map(e=>`[${e.t.slice(11,19)}] ${e.l[0].toUpperCase()} ${e.m}`).join('\n')||'(기록 없음)';
+}
+function logReport(){
+ const Cap=window.Capacitor, native=!!(Cap&&Cap.isNativePlatform&&Cap.isNativePlatform());
+ return ['Refuel 진단 로그',
+  '생성: '+new Date().toLocaleString('ko-KR'),
+  '실행: '+(native?'네이티브 앱':'웹')+' / 모드: '+(DEMO?'데모':'연동'),
+  '페어링: '+(T?'있음':'없음')+' · 키: '+(K?'있음':'없음')+' · 릴레이: '+SV,
+  'UA: '+navigator.userAgent,
+  '항목 수: '+LOG.length,
+  '─────────────────────────',
+  LOG.map(e=>`[${e.t.slice(0,19).replace('T',' ')}] ${e.l.toUpperCase()} ${e.m}`).join('\n')
+ ].join('\n');
+}
+window.addEventListener('error',e=>rlog('error','uncaught: '+(e.message||'')+' @'+(e.filename||'').split('/').pop()+':'+(e.lineno||'')));
+window.addEventListener('unhandledrejection',e=>rlog('error','unhandled: '+((e.reason&&e.reason.message)||e.reason)));
+if(P.get('t'))rlog('info','QR 페어링 저장됨');
 const fmtN=v=>num(v).toLocaleString('en-US');
 const fmtS=v=>{v=num(v);return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?Math.round(v/1e3)+'K':''+v};
 const WD=['월','화','수','목','금','토','일'];
@@ -134,8 +166,25 @@ function render(){
    2) 앱에서 구독(Subscribe) → 토픽: <code>${esc(T||'')}-a</code>
    <button id="cpbtn">토픽 복사</button><br>
    <span style="color:var(--mut);font-size:11px">🔒 상태 데이터는 종단간 암호화(AES-GCM) — 릴레이 서버는 암호문만 봅니다.</span><br>
-   <span style="color:var(--mut);font-size:11px">표시 값은 추정치입니다. 사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`);
+   <span style="color:var(--mut);font-size:11px">표시 값은 추정치입니다. 사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`)
+  +`<div class="setup"><b>🩺 진단 로그</b> <span style="color:var(--mut);font-size:11px">문제가 생기면 이 로그를 보내주세요</span>
+   <div id="logbox" style="max-height:150px;overflow:auto;background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:10px;font-family:Consolas,monospace;white-space:pre-wrap"></div>
+   <button id="logshare">공유</button> <button id="logcopy">복사</button> <button id="logsave">파일 저장</button> <button id="logclear">지우기</button></div>`;
  const b=$('#cpbtn');if(b)b.onclick=()=>{navigator.clipboard.writeText(T+'-a');b.textContent='복사됨!'};
+ const lb=$('#logbox');if(lb)lb.textContent=logTail();
+ const ls=$('#logshare');if(ls)ls.onclick=async()=>{
+  const txt=logReport();
+  try{ if(navigator.share){await navigator.share({title:'Refuel 진단 로그',text:txt});rlog('info','로그 공유함');}
+       else{await navigator.clipboard.writeText(txt);ls.textContent='복사됨!';} }
+  catch(e){rlog('warn','공유 취소/실패: '+e)} };
+ const lc=$('#logcopy');if(lc)lc.onclick=async()=>{
+  try{await navigator.clipboard.writeText(logReport());lc.textContent='복사됨!';}catch(e){rlog('error','복사 실패: '+e)} };
+ const lsv=$('#logsave');if(lsv)lsv.onclick=()=>{
+  try{const bl=new Blob([logReport()],{type:'text/plain;charset=utf-8'});const u=URL.createObjectURL(bl);
+   const a=document.createElement('a');a.href=u;a.download='refuel-log-'+new Date().toISOString().slice(0,10)+'.txt';
+   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);
+  }catch(e){rlog('error','파일 저장 실패: '+e)} };
+ const lcl=$('#logclear');if(lcl)lcl.onclick=()=>{LOG=[];try{localStorage.removeItem(LOG_KEY)}catch(_){}rlog('info','로그 초기화됨')};
 }
 function tickCount(){
  const now=Date.now()/1000;
@@ -149,32 +198,40 @@ async function poll(){
  try{
   const res=await fetch(`${SV}/${encodeURIComponent(T)}-s/json?poll=1&since=all`,{cache:'no-store'});
   const lines=(await res.text()).trim().split('\n').filter(Boolean);
+  let bad=0;
   for(let i=lines.length-1;i>=0;i--){
    try{
     const m=JSON.parse(lines[i]);
     if(m.event==='message'){state=await decrypt(m.message);lastFetch=Date.now();break}
-   }catch(e){/* 복호화 실패(위조/구버전) → 무시 */}
+   }catch(e){bad++/* 복호화 실패(위조/구버전) → 무시 */}
   }
+  if(bad&&!pollState.badLogged){rlog('warn','복호화 실패 메시지 '+bad+'건 무시(키 불일치 또는 구버전). 재페어링 필요할 수 있음');pollState.badLogged=true}
+  if(state&&!pollState.ok){rlog('info','PC 상태 수신 성공(에이전트 '+(state.agents||[]).length+'개)');pollState.ok=true}
   render();
   const age=state?Math.round((Date.now()/1000)-num(state.ts)):null;
   $('#meta').innerHTML=state?(age>1200?`<span class="stale">PC ${Math.round(age/60)}분 전 응답</span>`:`동기화 ${new Date(lastFetch).toLocaleTimeString('ko-KR')} 🔒`):'대기 중';
- }catch(e){$('#meta').textContent='연결 실패(오프라인?)'}
+ }catch(e){$('#meta').textContent='연결 실패(오프라인?)';
+  if(pollState.ok!==false){rlog('error','릴레이 연결 실패: '+(e&&e.message||e));pollState.ok=false}}
 }
+rlog('info','앱 시작 · '+(DEMO?'데모 모드':'연동 모드')+' · 페어링 '+(T?'있음':'없음'));
 if(DEMO){state=demoState();render();$('#meta').textContent='데모 · 샘플 데이터';setInterval(tickCount,1000);}
 else{render();poll();setInterval(poll,30000);setInterval(tickCount,1000);}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 // AdMob 배너 — 네이티브 앱(Capacitor)일 때만. 웹에선 아무 것도 안 함(가드).
 document.addEventListener('DOMContentLoaded',async()=>{
  const Cap=window.Capacitor;
- if(!Cap||!Cap.isNativePlatform||!Cap.isNativePlatform())return;
- const AdMob=Cap.Plugins&&Cap.Plugins.AdMob;if(!AdMob)return;
+ if(!Cap||!Cap.isNativePlatform||!Cap.isNativePlatform()){rlog('info','웹 실행 - 광고 없음');return}
+ const AdMob=Cap.Plugins&&Cap.Plugins.AdMob;
+ if(!AdMob){rlog('error','AdMob 플러그인 없음(네이티브 등록 실패)');return}
  // ↓↓↓ 출시 전 실제 AdMob ID로 교체 (지금은 Google 공식 테스트 ID) ↓↓↓
  const TEST_BANNER='ca-app-pub-3940256099942544/6300978111';
  const IS_TESTING=true;   // 실제 출시 시 false
  try{
   await AdMob.initialize({initializeForTesting:IS_TESTING});
+  rlog('info','AdMob 초기화 완료'+(IS_TESTING?'(테스트 광고)':'(실제 광고)'));
   await AdMob.showBanner({adId:TEST_BANNER,adSize:'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:IS_TESTING});
   document.body.style.paddingBottom='60px';   // 배너에 콘텐츠 가림 방지
- }catch(e){console.warn('admob',e);}
+  rlog('info','AdMob 배너 표시 요청 성공');
+ }catch(e){rlog('error','AdMob 실패: '+(e&&e.message||e));}
 });
 </script></body></html>
