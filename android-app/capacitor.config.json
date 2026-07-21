@@ -1,0 +1,6 @@
+{
+  "appId": "io.github.nohseongmin.refuel",
+  "appName": "Refuel",
+  "webDir": "www",
+  "server": { "androidScheme": "https" }
+}

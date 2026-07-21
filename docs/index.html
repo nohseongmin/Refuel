@@ -163,4 +163,18 @@ async function poll(){
 if(DEMO){state=demoState();render();$('#meta').textContent='데모 · 샘플 데이터';setInterval(tickCount,1000);}
 else{render();poll();setInterval(poll,30000);setInterval(tickCount,1000);}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+// AdMob 배너 — 네이티브 앱(Capacitor)일 때만. 웹에선 아무 것도 안 함(가드).
+document.addEventListener('DOMContentLoaded',async()=>{
+ const Cap=window.Capacitor;
+ if(!Cap||!Cap.isNativePlatform||!Cap.isNativePlatform())return;
+ const AdMob=Cap.Plugins&&Cap.Plugins.AdMob;if(!AdMob)return;
+ // ↓↓↓ 출시 전 실제 AdMob ID로 교체 (지금은 Google 공식 테스트 ID) ↓↓↓
+ const TEST_BANNER='ca-app-pub-3940256099942544/6300978111';
+ const IS_TESTING=true;   // 실제 출시 시 false
+ try{
+  await AdMob.initialize({initializeForTesting:IS_TESTING});
+  await AdMob.showBanner({adId:TEST_BANNER,adSize:'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:IS_TESTING});
+  document.body.style.paddingBottom='60px';   // 배너에 콘텐츠 가림 방지
+ }catch(e){console.warn('admob',e);}
+});
 </script></body></html>

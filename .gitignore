@@ -21,3 +21,16 @@ Thumbs.db
 android/*
 !android/twa-manifest.json
 !android/store-listing.md
+!android/PLAY_GUIDE.md
+
+# Capacitor 앱 - 네이티브 프로젝트는 커밋(재현성), 빌드 산출물·의존성만 제외
+android-app/node_modules/
+android-app/www/
+android-app/android/build/
+android-app/android/app/build/
+android-app/android/.gradle/
+android-app/android/local.properties
+android-app/android/keystore.properties
+android-app/*.aab
+android-app/*.apk
+android-app/*.idsig
