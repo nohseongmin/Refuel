@@ -40,7 +40,7 @@ padding:8px 14px;font-size:12px;margin-top:8px}
 a{color:var(--blu)}
 .stale{color:var(--warn)}
 </style></head><body>
-<div class="top"><div class="brand">● Refuel</div><div class="meta" id="meta">--</div></div>
+<div class="top"><div class="brand">● Refuel</div><div style="display:flex;align-items:center;gap:10px"><div class="meta" id="meta">--</div><button id="gear" title="설정" style="background:none;border:0;color:var(--mut);font-size:20px;cursor:pointer;padding:2px 4px;line-height:1">⚙</button></div></div>
 <div id="root"></div>
 <script src="jsqr.min.js"></script>
 <script>
@@ -51,7 +51,8 @@ const P=new URLSearchParams(location.hash.slice(1));
 if(P.get('t')){localStorage.rf_t=P.get('t');if(P.get('k'))localStorage.rf_k=P.get('k');
  if(P.get('sv'))localStorage.rf_sv=P.get('sv');history.replaceState(null,'',location.pathname);}
 const T=localStorage.rf_t, K=localStorage.rf_k, SV=localStorage.rf_sv||'https://ntfy.sh';
-const DEMO = P.get('demo')!==null || !T;   // 미페어링 또는 #demo → 샘플 데이터 미리보기
+const DEMO = P.get('demo')!==null;   // 명시적 #demo 일 때만 샘플. 미연결은 연결 화면.
+const PAIRED = !!(T && K);
 let state=null, lastFetch=0, cryptoKey=null;
 function demoState(){
  const now=Date.now()/1000, day=86400, base=new Date();
@@ -159,16 +160,10 @@ async function decrypt(msg){
  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:raw.slice(0,12)},key,raw.slice(12));
  return JSON.parse(new TextDecoder().decode(pt));
 }
-function render(){
- const r=$('#root');
- if(!DEMO){
-  if(!T){r.innerHTML=`<div class="setup"><b>페어링 필요</b><br>PC의 Refuel에서 ⚙ 설정 → <b>QR 페어링</b>을 눌러 QR을 스캔하세요.</div>`;return}
-  if(!K){r.innerHTML=`<div class="setup"><b>재페어링 필요</b><br>보안 업데이트로 암호화가 적용됐어요. PC에서 QR을 다시 스캔하세요.</div>`;return}
-  if(!state){r.innerHTML=`<div class="setup">데이터 기다리는 중… PC의 Refuel이 켜져 있고 ⚙에서 <b>폰 연동</b>이 ON인지 확인.</div>`;return}
- }
+function agentCardsHTML(agents){
  const now=Date.now()/1000;
- const agents=Array.isArray(state.agents)?state.agents:[];
- r.innerHTML=agents.map(a=>{
+ if(!agents.length)return `<div class="setup">감지된 에이전트가 없습니다. PC에서 AI 도구를 사용하면 표시됩니다.</div>`;
+ return agents.map(a=>{
   const name=esc(a.name||a.id||'?');
   let count='충전완료',col='var(--acc)',prog=0,ratio=null,sub='활성 윈도우 없음 · 바로 사용 가능';
   const bReset=a.block?num(a.block.reset):0, wkReset=(a.wk&&a.wk.reset)?num(a.wk.reset):0;
@@ -179,8 +174,6 @@ function render(){
    count=dur(rem);prog=Math.min(1,(WINDOW_SEC-rem)/WINDOW_SEC);
    const t=new Date(bReset*1000);
    sub=`5시간 리셋 ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')} · 윈도우 ${fmtN(a.block.tok)} 토큰`+(ratio!=null?` · 추정 ${Math.round(ratio*100)}%`:'');
-   const eta=a.block.eta?num(a.block.eta):0;
-   if(eta>now){const et=new Date(eta*1000);sub+=` · ⚠소진예상 ${String(et.getHours()).padStart(2,'0')}:${String(et.getMinutes()).padStart(2,'0')}`;col='var(--warn)';}
   }else if(wkRatio!=null&&wkRatio>=0.8&&wkReset>now){
    const rem=wkReset-now;col='var(--dng)';count=dur(rem);prog=1-rem/WEEK_SEC;
    sub='주간 한도 도달 - 풀릴 때까지 대기';
@@ -200,38 +193,116 @@ function render(){
    <div class="sub">${wkline}</div>
    <div class="grid"><div class="mini"><div class="l">오늘</div><div class="v">${fmtN(a.today)}</div></div>
    <div class="mini"><div class="l">이번 주</div><div class="v">${fmtN(a.week)}</div></div></div>
-   <div class="days">${days}</div></div>`}).join('')
-  +(DEMO
-   ? `<div class="setup"><b>🎬 데모 · 샘플 데이터</b><br>실제 내 PC의 사용량을 보려면 연결하세요.<br>
-      1) PC에 <a href="https://github.com/nohseongmin/Refuel/releases/latest" target="_blank" rel="noopener noreferrer">Refuel 데스크톱</a> 설치<br>
-      2) PC ⚙ 설정 → QR 페어링 → 아래 버튼으로 스캔<br>
-      <button id="scanbtn" style="background:var(--acc);color:#0d0f14;border:0;font-weight:700;padding:12px 18px;font-size:14px;width:100%">📷 PC 연결 (QR 스캔)</button>
-      <span style="color:var(--mut);font-size:11px">표시 값은 추정치입니다. 사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`
-   : `<div class="setup" id="push"><b>🔔 푸시 알림 받기</b><br>
-   1) <a href="https://ntfy.sh/app" target="_blank" rel="noopener noreferrer">ntfy 앱 설치</a> (iOS/Android 무료)<br>
-   2) 앱에서 구독(Subscribe) → 토픽: <code>${esc(T||'')}-a</code>
-   <button id="cpbtn">토픽 복사</button><br>
-   <span style="color:var(--mut);font-size:11px">🔒 상태 데이터는 종단간 암호화(AES-GCM) — 릴레이 서버는 암호문만 봅니다.</span><br>
-   <span style="color:var(--mut);font-size:11px">표시 값은 추정치입니다. 사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`)
-  +`<div class="setup"><b>🩺 진단 로그</b> <span style="color:var(--mut);font-size:11px">문제가 생기면 이 로그를 보내주세요</span>
-   <div id="logbox" style="max-height:150px;overflow:auto;background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:10px;font-family:Consolas,monospace;white-space:pre-wrap"></div>
-   <button id="logshare">공유</button> <button id="logcopy">복사</button> <button id="logsave">파일 저장</button> <button id="logclear">지우기</button></div>`;
- const b=$('#cpbtn');if(b)b.onclick=()=>{navigator.clipboard.writeText(T+'-a');b.textContent='복사됨!'};
+   <div class="days">${days}</div></div>`}).join('');
+}
+function connectHTML(){
+ return `<div class="setup"><b>PC와 연결하세요</b><br>
+   토큰 사용량을 보려면 PC의 Refuel과 한 번만 연결하면 됩니다.<br><br>
+   1) PC에 <a href="https://github.com/nohseongmin/Refuel/releases/latest" target="_blank" rel="noopener noreferrer">Refuel 데스크톱</a> 설치·실행<br>
+   2) PC 우측 상단 ⚙ → <b>QR 페어링</b><br>
+   3) 아래 버튼으로 그 QR을 스캔<br>
+   <button id="scanbtn" style="background:var(--acc);color:#0d0f14;border:0;font-weight:700;padding:14px;font-size:15px;width:100%;margin-top:8px">📷 QR 스캔해서 연결</button>
+   <button id="demobtn" style="width:100%">앱 미리보기 (데모)</button>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:8px">사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`;
+}
+function wireCommon(){
  const sc=$('#scanbtn');if(sc)sc.onclick=startScan;
+ const db=$('#demobtn');if(db)db.onclick=()=>{location.hash='demo';location.reload();};
+}
+function render(){
+ const r=$('#root');
+ if(DEMO){
+  r.innerHTML=agentCardsHTML(Array.isArray(state&&state.agents)?state.agents:[])
+   +`<div class="setup"><b>🎬 데모 · 샘플 데이터</b><br>실제 데이터를 보려면 PC와 연결하세요.
+     <button id="scanbtn" style="width:100%;margin-top:6px">📷 QR 스캔해서 연결</button></div>`;
+  wireCommon();return;
+ }
+ if(!PAIRED){$('#meta').textContent='미연결';r.innerHTML=connectHTML();wireCommon();return;}
+ if(!state){r.innerHTML=`<div class="setup"><b>데이터 기다리는 중…</b><br>PC의 Refuel이 켜져 있고 ⚙에서 <b>폰 연동</b>이 켜져 있는지 확인하세요.</div>`;return;}
+ r.innerHTML=agentCardsHTML(Array.isArray(state.agents)?state.agents:[]);
+}
+
+// ---- 로컬 알림 (폰이 직접 예약 → PC 꺼져도 리셋 시각에 울림, ntfy 앱 불필요) ----
+const CH='refuel_reset';
+function nativeLN(){const C=window.Capacitor;return (C&&C.isNativePlatform&&C.isNativePlatform()&&C.Plugins&&C.Plugins.LocalNotifications)?C.Plugins.LocalNotifications:null;}
+async function ensureChannel(){
+ const LN=nativeLN();if(!LN)return;
+ const sound=localStorage.rf_sound!=='0', vibe=localStorage.rf_vibe!=='0';
+ try{await LN.deleteChannel({id:CH})}catch(_){}
+ try{await LN.createChannel({id:CH,name:'재충전 알림',description:'토큰 한도 초기화',importance:sound?5:2,vibration:vibe,visibility:1,lights:true,lightColor:'#46e08a'});}
+ catch(e){rlog('warn','채널 생성 실패: '+e)}
+}
+async function ensurePerm(){
+ const LN=nativeLN();if(!LN)return false;
+ try{let p=await LN.checkPermissions();if(p.display!=='granted'){p=await LN.requestPermissions();}return p.display==='granted';}
+ catch(e){rlog('warn','알림 권한 확인 실패: '+e);return false;}
+}
+let lastSchedSig='';
+async function scheduleLocalNotifs(agents,force){
+ const LN=nativeLN();if(!LN)return;
+ const enabled=localStorage.rf_notif!=='0', now=Date.now();
+ const items=(agents||[]).filter(a=>a.block&&num(a.block.reset)*1000>now+5000)
+   .map(a=>({name:(a.name||''),at:num(a.block.reset)*1000}));
+ const sig=(enabled?'1':'0')+'|'+(localStorage.rf_sound||'1')+(localStorage.rf_vibe||'1')+'|'+items.map(i=>i.name+i.at).join(',');
+ if(!force&&sig===lastSchedSig)return; lastSchedSig=sig;
+ try{const pend=await LN.getPending();if(pend.notifications&&pend.notifications.length)await LN.cancel({notifications:pend.notifications.map(n=>({id:n.id}))});}catch(_){}
+ if(!enabled){rlog('info','알림 꺼짐 - 예약 안 함');return;}
+ if(!items.length)return;
+ if(!await ensurePerm()){rlog('warn','알림 권한 없음 - 예약 취소');return;}
+ await ensureChannel();
+ let id=100;
+ const notifs=items.map(i=>({id:id++,title:i.name+' 재충전 완료',body:'5시간 사용량 한도가 초기화되었습니다.',channelId:CH,schedule:{at:new Date(i.at)}}));
+ try{await LN.schedule({notifications:notifs});rlog('info','로컬 알림 '+notifs.length+'건 예약');}
+ catch(e){rlog('error','로컬 알림 예약 실패: '+(e&&e.message||e));}
+}
+async function testNotif(btn){
+ const LN=nativeLN();
+ if(LN){
+  try{if(!await ensurePerm()){alert('알림 권한이 필요합니다.');return;}
+   await ensureChannel();
+   await LN.schedule({notifications:[{id:9,title:'Refuel 테스트',body:'알림이 잘 보이면 성공입니다.',channelId:CH,schedule:{at:new Date(Date.now()+1200)}}]});
+   rlog('info','테스트 알림 예약');if(btn)btn.textContent='전송됨';}
+  catch(e){rlog('error','테스트 알림 실패: '+(e&&e.message||e));alert('실패: '+(e&&e.message||e));}
+ }else if('Notification'in window){
+  try{if(Notification.permission!=='granted')await Notification.requestPermission();new Notification('Refuel 테스트',{body:'알림이 잘 보이면 성공입니다.'});if(btn)btn.textContent='전송됨';}
+  catch(e){alert('알림 실패: '+e);}
+ }else alert('이 환경은 알림을 지원하지 않습니다.');
+}
+
+// ---- 설정 패널 (우상단 ⚙) ----
+function toggleRow(label,key){
+ const on=(localStorage[key]||'1')!=='0';
+ return `<label style="display:flex;justify-content:space-between;align-items:center;padding:12px 2px;border-top:1px solid var(--bd)">
+   <span>${label}</span><input type="checkbox" data-k="${key}" ${on?'checked':''} style="width:22px;height:22px"></label>`;
+}
+function openSettings(){
+ if($('#setpanel'))return;
+ const ov=document.createElement('div');ov.id='setpanel';
+ ov.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:9998;overflow:auto;padding:max(16px,env(safe-area-inset-top)) 16px 40px';
+ ov.innerHTML=`<div class="top"><div class="brand">설정</div><button id="setclose" style="background:none;border:0;color:var(--tx);font-size:22px">✕</button></div>
+  <div class="setup"><b>연결</b><br>상태: ${PAIRED?'<span style="color:var(--acc)">연결됨</span>':'<span style="color:var(--warn)">미연결</span>'}
+   <button id="s_scan" style="width:100%;margin-top:8px">📷 다시 스캔 (연결/변경)</button>
+   ${PAIRED?'<button id="s_unpair" style="width:100%">연결 해제</button>':''}</div>
+  <div class="setup"><b>알림</b>${toggleRow('알림 받기','rf_notif')}${toggleRow('소리','rf_sound')}${toggleRow('진동','rf_vibe')}
+   <button id="s_test" style="width:100%;margin-top:8px">테스트 알림</button>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">폰이 리셋 시각에 직접 알림을 울립니다. PC가 꺼져 있어도 동작합니다.</span></div>
+  <div class="setup"><b>🩺 진단 로그</b>
+   <div id="logbox" style="max-height:150px;overflow:auto;background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:10px;font-family:Consolas,monospace;white-space:pre-wrap"></div>
+   <button id="logshare">공유</button> <button id="logcopy">복사</button> <button id="logclear">지우기</button></div>
+  ${PAIRED?`<div class="setup"><b>고급</b><br><span style="color:var(--mut);font-size:11px">ntfy 앱으로도 받기(선택). 토픽: <code>${esc(T)}-a</code></span> <button id="cpbtn">복사</button></div>`:''}
+  <div class="setup"><button id="s_demo" style="width:100%">🎬 데모 보기</button></div>`;
+ document.body.append(ov);
+ $('#setclose').onclick=()=>ov.remove();
+ ov.querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=()=>{localStorage[c.dataset.k]=c.checked?'1':'0';rlog('info','설정 '+c.dataset.k+'='+c.checked);if(state)scheduleLocalNotifs(state.agents,true);});
+ const a1=$('#s_scan');if(a1)a1.onclick=startScan;
+ const a2=$('#s_unpair');if(a2)a2.onclick=()=>{if(confirm('연결을 해제할까요? PC에서 다시 스캔해야 합니다.')){delete localStorage.rf_t;delete localStorage.rf_k;rlog('info','연결 해제');location.reload();}};
+ const a3=$('#s_test');if(a3)a3.onclick=()=>testNotif(a3);
+ const a4=$('#s_demo');if(a4)a4.onclick=()=>{location.hash='demo';location.reload();};
+ const cp=$('#cpbtn');if(cp)cp.onclick=()=>{navigator.clipboard.writeText(T+'-a');cp.textContent='복사됨!'};
  const lb=$('#logbox');if(lb)lb.textContent=logTail();
- const ls=$('#logshare');if(ls)ls.onclick=async()=>{
-  const txt=logReport();
-  try{ if(navigator.share){await navigator.share({title:'Refuel 진단 로그',text:txt});rlog('info','로그 공유함');}
-       else{await navigator.clipboard.writeText(txt);ls.textContent='복사됨!';} }
-  catch(e){rlog('warn','공유 취소/실패: '+e)} };
- const lc=$('#logcopy');if(lc)lc.onclick=async()=>{
-  try{await navigator.clipboard.writeText(logReport());lc.textContent='복사됨!';}catch(e){rlog('error','복사 실패: '+e)} };
- const lsv=$('#logsave');if(lsv)lsv.onclick=()=>{
-  try{const bl=new Blob([logReport()],{type:'text/plain;charset=utf-8'});const u=URL.createObjectURL(bl);
-   const a=document.createElement('a');a.href=u;a.download='refuel-log-'+new Date().toISOString().slice(0,10)+'.txt';
-   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);
-  }catch(e){rlog('error','파일 저장 실패: '+e)} };
- const lcl=$('#logclear');if(lcl)lcl.onclick=()=>{LOG=[];try{localStorage.removeItem(LOG_KEY)}catch(_){}rlog('info','로그 초기화됨')};
+ const ls=$('#logshare');if(ls)ls.onclick=async()=>{try{if(navigator.share){await navigator.share({title:'Refuel 진단 로그',text:logReport()});}else{await navigator.clipboard.writeText(logReport());ls.textContent='복사됨!';}}catch(e){rlog('warn','공유 취소/실패: '+e)}};
+ const lc=$('#logcopy');if(lc)lc.onclick=async()=>{try{await navigator.clipboard.writeText(logReport());lc.textContent='복사됨!';}catch(e){}};
+ const lcl=$('#logclear');if(lcl)lcl.onclick=()=>{LOG=[];try{localStorage.removeItem(LOG_KEY)}catch(_){}$('#logbox').textContent=logTail();};
 }
 function tickCount(){
  const now=Date.now()/1000;
@@ -255,13 +326,15 @@ async function poll(){
   if(bad&&!pollState.badLogged){rlog('warn','복호화 실패 메시지 '+bad+'건 무시(키 불일치 또는 구버전). 재페어링 필요할 수 있음');pollState.badLogged=true}
   if(state&&!pollState.ok){rlog('info','PC 상태 수신 성공(에이전트 '+(state.agents||[]).length+'개)');pollState.ok=true}
   render();
+  if(state)scheduleLocalNotifs(state.agents);
   const age=state?Math.round((Date.now()/1000)-num(state.ts)):null;
   $('#meta').innerHTML=state?(age>1200?`<span class="stale">PC ${Math.round(age/60)}분 전 응답</span>`:`동기화 ${new Date(lastFetch).toLocaleTimeString('ko-KR')} 🔒`):'대기 중';
  }catch(e){$('#meta').textContent='연결 실패(오프라인?)';
   if(pollState.ok!==false){rlog('error','릴레이 연결 실패: '+(e&&e.message||e));pollState.ok=false}}
 }
-rlog('info','앱 시작 · '+(DEMO?'데모 모드':'연동 모드')+' · 페어링 '+(T?'있음':'없음'));
-if(DEMO){state=demoState();render();$('#meta').textContent='데모 · 샘플 데이터';setInterval(tickCount,1000);}
+rlog('info','앱 시작 · '+(DEMO?'데모':PAIRED?'연동':'미연결'));
+{const g=$('#gear');if(g)g.onclick=openSettings;}
+if(DEMO){state=demoState();render();$('#meta').textContent='데모';setInterval(tickCount,1000);}
 else{render();poll();setInterval(poll,30000);setInterval(tickCount,1000);}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 // AdMob 배너 — 네이티브 앱(Capacitor)일 때만. 웹에선 아무 것도 안 함(가드).
