@@ -42,6 +42,7 @@ a{color:var(--blu)}
 </style></head><body>
 <div class="top"><div class="brand">● Refuel</div><div class="meta" id="meta">--</div></div>
 <div id="root"></div>
+<script src="jsqr.min.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -94,6 +95,50 @@ function logReport(){
 window.addEventListener('error',e=>rlog('error','uncaught: '+(e.message||'')+' @'+(e.filename||'').split('/').pop()+':'+(e.lineno||'')));
 window.addEventListener('unhandledrejection',e=>rlog('error','unhandled: '+((e.reason&&e.reason.message)||e.reason)));
 if(P.get('t'))rlog('info','QR 페어링 저장됨');
+
+// ---- 앱 내 QR 스캐너 (ntfy 앱 없이 바로 페어링) ----
+function applyPairing(text){
+ const i=String(text).indexOf('#');
+ const p=new URLSearchParams(i>=0?text.slice(i+1):'');
+ if(!p.get('t')){rlog('warn','QR에 페어링 정보 없음');alert('Refuel 페어링 QR이 아닙니다.');return false;}
+ localStorage.rf_t=p.get('t');
+ if(p.get('k'))localStorage.rf_k=p.get('k');
+ if(p.get('sv'))localStorage.rf_sv=p.get('sv');
+ rlog('info','페어링 완료 - 재시작');
+ location.reload();
+ return true;
+}
+async function startScan(){
+ if(typeof jsQR!=='function'){rlog('error','QR 디코더 로드 안 됨');alert('스캐너를 불러오지 못했습니다.');return;}
+ rlog('info','QR 스캔 시작');
+ let stream;
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});}
+ catch(e){rlog('error','카메라 접근 실패: '+(e&&e.message||e));alert('카메라를 열 수 없습니다. 앱 설정에서 카메라 권한을 허용해 주세요.');return;}
+ const ov=document.createElement('div');
+ ov.style.cssText='position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px';
+ const v=document.createElement('video');v.setAttribute('playsinline','');v.muted=true;
+ v.style.cssText='width:88%;max-width:420px;border-radius:16px';v.srcObject=stream;
+ const hint=document.createElement('div');hint.textContent='PC 화면의 QR을 비추세요';
+ hint.style.cssText='color:#e7eaf0;font-size:15px';
+ const cancel=document.createElement('button');cancel.textContent='취소';
+ cancel.style.cssText='background:#141821;color:#e7eaf0;border:1px solid #252c3a;border-radius:10px;padding:10px 22px;font-size:14px';
+ ov.append(hint,v,cancel);document.body.append(ov);
+ const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});
+ let stop=false;
+ const close=()=>{stop=true;stream.getTracks().forEach(t=>t.stop());ov.remove();};
+ cancel.onclick=()=>{rlog('info','QR 스캔 취소');close();};
+ try{await v.play();}catch(_){}
+ (function tick(){
+  if(stop)return;
+  if(v.readyState>=2&&v.videoWidth){
+   cv.width=v.videoWidth;cv.height=v.videoHeight;
+   cx.drawImage(v,0,0,cv.width,cv.height);
+   let code=null;try{const im=cx.getImageData(0,0,cv.width,cv.height);code=jsQR(im.data,im.width,im.height);}catch(_){}
+   if(code&&code.data){rlog('info','QR 인식됨');close();applyPairing(code.data);return;}
+  }
+  requestAnimationFrame(tick);
+ })();
+}
 const fmtN=v=>num(v).toLocaleString('en-US');
 const fmtS=v=>{v=num(v);return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?Math.round(v/1e3)+'K':''+v};
 const WD=['월','화','수','목','금','토','일'];
@@ -159,7 +204,8 @@ function render(){
   +(DEMO
    ? `<div class="setup"><b>🎬 데모 · 샘플 데이터</b><br>실제 내 PC의 사용량을 보려면 연결하세요.<br>
       1) PC에 <a href="https://github.com/nohseongmin/Refuel/releases/latest" target="_blank" rel="noopener noreferrer">Refuel 데스크톱</a> 설치<br>
-      2) ⚙ 설정 → QR 페어링 → 이 화면을 카메라로 스캔<br>
+      2) PC ⚙ 설정 → QR 페어링 → 아래 버튼으로 스캔<br>
+      <button id="scanbtn" style="background:var(--acc);color:#0d0f14;border:0;font-weight:700;padding:12px 18px;font-size:14px;width:100%">📷 PC 연결 (QR 스캔)</button>
       <span style="color:var(--mut);font-size:11px">표시 값은 추정치입니다. 사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`
    : `<div class="setup" id="push"><b>🔔 푸시 알림 받기</b><br>
    1) <a href="https://ntfy.sh/app" target="_blank" rel="noopener noreferrer">ntfy 앱 설치</a> (iOS/Android 무료)<br>
@@ -171,6 +217,7 @@ function render(){
    <div id="logbox" style="max-height:150px;overflow:auto;background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:10px;font-family:Consolas,monospace;white-space:pre-wrap"></div>
    <button id="logshare">공유</button> <button id="logcopy">복사</button> <button id="logsave">파일 저장</button> <button id="logclear">지우기</button></div>`;
  const b=$('#cpbtn');if(b)b.onclick=()=>{navigator.clipboard.writeText(T+'-a');b.textContent='복사됨!'};
+ const sc=$('#scanbtn');if(sc)sc.onclick=startScan;
  const lb=$('#logbox');if(lb)lb.textContent=logTail();
  const ls=$('#logshare');if(ls)ls.onclick=async()=>{
   const txt=logReport();
