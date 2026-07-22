@@ -6,6 +6,7 @@
 import json
 import glob
 import os
+import re
 import sqlite3
 import logging
 from pathlib import Path
@@ -187,12 +188,24 @@ def _parse_iso_utc(ts):
     return dt
 
 
+_TS_RE = re.compile(r'"timestamp"\s*:\s*"([^"]+)"')
+
+
 def _parse_claude_file(path, agent):
     events = []
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 if '"usage"' not in line:
+                    # 5시간 창은 '내가 보낸 순간' 시작한다. 어시스턴트 응답 시각만 쓰면
+                    # 첫 응답이 오래 걸릴수록 리셋 추정이 그만큼 밀린다.
+                    # → 사용자 메시지도 토큰 0짜리 활동으로 기록해 창 시작을 정확히 잡는다.
+                    if '"type":"user"' in line:
+                        m = _TS_RE.search(line)
+                        dt = _parse_iso_utc(m.group(1)) if m else None
+                        if dt is not None:
+                            events.append({"ts": dt, "agent": agent, "inp": 0, "out": 0,
+                                           "cache": 0, "total": 0, "id": None})
                     continue
                 try:
                     obj = json.loads(line)

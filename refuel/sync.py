@@ -108,28 +108,38 @@ def post_alert(title, msg):
            "priority": 4, "tags": ["zap"]})
 
 
-def schedule_refill(agent_id, name, block_start, reset_at):
-    """'재충전 완료' 푸시를 리셋 시각으로 ntfy 서버에 예약.
+SCHEDULE_TOL = 15 * 60   # 같은 리셋으로 간주하는 허용 오차(초). 재예약=중복 푸시 방지
 
-    윈도우 시작 시 1회 예약해두면 PC가 꺼져 있어도 ntfy가 정시에 발송한다.
-    (리셋 시각 = 시작+5h로 확정이라 취소 불필요. 블록당 1회만 - config에 기록해 중복 방지)
+
+def schedule_refill(agent_id, name, block_start, reset_at):
+    """'재충전 완료' 푸시를 리셋 시각으로 ntfy 서버에 예약해 PC가 꺼져도 도착하게 한다.
+
+    ntfy 예약은 취소가 불가능하므로 한 윈도우당 반드시 1건만 보낸다.
+    중복 방지: 저장된 예약 리셋시각과 ±15분 이내면 같은 윈도우로 보고 재예약하지 않는다.
+    (블록 시작 시각이 스캔/버전 간 미세하게 달라져도 같은 윈도우는 한 번만 나가게 됨)
     """
     if not enabled():
         return
-    remaining = (reset_at - datetime.now().astimezone()).total_seconds()
-    if remaining < 60:            # ntfy 최소 지연 여유 + 임박 블록은 라이브 경로에 맡김
+    reset_epoch = int(reset_at.timestamp())
+    if reset_epoch - int(datetime.now().timestamp()) < 60:   # 임박 블록은 라이브 경로에 맡김
         return
     sched = core.CONFIG.get("sync_scheduled") or {}
-    key = block_start.isoformat()
-    if sched.get(agent_id) == key:
+    prev = sched.get(agent_id)
+    if isinstance(prev, str):
+        # 이전 버전 형식(블록시작 문자열) → 이미 예약된 것으로 간주하고 조용히 이관(중복 방지)
+        sched[agent_id] = reset_epoch
+        core.CONFIG["sync_scheduled"] = sched
+        core.save_config()
+        log.info("예약 형식 이관(재예약 안 함): %s", name)
         return
-    sched[agent_id] = key
+    if isinstance(prev, (int, float)) and abs(reset_epoch - prev) < SCHEDULE_TOL:
+        return   # 같은 윈도우에 이미 예약됨
+    sched[agent_id] = reset_epoch
     core.CONFIG["sync_scheduled"] = sched
     core.save_config()
     _fire({"topic": topic() + "-a", "title": f"{name} 재충전 완료",
-           "message": "5시간 윈도우 리셋! 다시 써도 돼. (예약 발송 - PC 꺼져 있어도 도착)",
-           "priority": 4, "tags": ["zap"],
-           "delay": str(int(reset_at.timestamp()))})
+           "message": "5시간 사용량 한도가 초기화되었습니다.",
+           "priority": 4, "delay": str(reset_epoch)})
     log.info("재충전 푸시 예약: %s @ %s", name, reset_at.strftime("%H:%M"))
 
 

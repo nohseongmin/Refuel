@@ -470,56 +470,43 @@ class RefuelApp:
 
     # ---------- 상태 ----------
     def _check_notifications(self, s):
-        soon_sec = core.CONFIG["reset_soon_min"] * 60
-        warn = core.CONFIG["warn_ratio"]
+        """알림은 '초기화' 2종만 보낸다 — 5시간 윈도우 리셋, 주간 사용량 리셋.
+
+        리셋임박/사용량경고/소진예측/주간한도경고는 실사용에서 난잡해 전부 제거했다.
+        수치는 앱 화면에서 언제든 볼 수 있으므로, 알림은 '이제 다시 써도 된다'만 알린다.
+        """
         live = set()
         for a in s.get("agents", []):
             live.add(a["id"])
-            ns = self._ns.setdefault(a["id"], {"last_start": None, "warned_ratio": False,
-                                               "warned_soon": False, "wk_reset": None, "wk_warned": False,
-                                               "warned_eta": False})
-            nm, b, wk = a["name"], a["block"], a.get("weekly") or {}
+            ns = self._ns.setdefault(a["id"], {"last_start": None, "wk_reset": None})
+            nm, b = a["name"], a["block"]
 
-            # --- 주간 한도 ---
-            wkr = wk.get("reset_at")
+            # --- 주간 사용량 초기화 ---
+            wkr = (a.get("weekly") or {}).get("reset_at")
             if wkr is not None:
-                if ns["wk_reset"] is None:
+                if ns["wk_reset"] is None:          # 첫 관측은 기준만 잡고 알리지 않음
                     ns["wk_reset"] = wkr
-                elif wkr != ns["wk_reset"]:
-                    _notify(f"{nm} 주간 한도 리셋", "주간 사용량 초기화됨. 다시 써도 돼.")
-                    ns["wk_reset"], ns["wk_warned"] = wkr, False
-                if wk.get("ratio") is not None and wk["ratio"] >= warn and not ns["wk_warned"]:
-                    days = wk.get("remaining_sec", 0) // 86400
-                    _notify(f"{nm} 주간 한도 경고", f"주간 추정 {int(wk['ratio'] * 100)}% · {days}일 후 리셋")
-                    ns["wk_warned"] = True
+                elif wkr != ns["wk_reset"]:         # 다음 리셋 시각이 밀림 = 주간이 초기화됨
+                    _notify(f"{nm} 주간 초기화", "주간 사용량 한도가 초기화되었습니다.", phone=False)
+                    ns["wk_reset"] = wkr
 
-            # --- 5시간 윈도우 ---
-            if b is None:
+            if b is None:                       # 윈도우 만료 = 재충전 완료
                 if ns["last_start"] is not None:
-                    # 폰 복사본은 예약 발송이 담당 → PC 풍선만
-                    _notify(f"{nm} 재충전 완료", "5시간 윈도우 리셋됨.", phone=False)
-                    ns.update(last_start=None, warned_ratio=False, warned_soon=False)
+                    # 폰 알림은 예약 발송이 담당(PC 꺼져도 도착) → 여기선 PC 화면만
+                    _notify(f"{nm} 재충전 완료", "5시간 사용량 한도가 초기화되었습니다.", phone=False)
+                    ns["last_start"] = None
                 continue
+
             # 리셋 시각 푸시를 ntfy에 예약(PC 꺼져 있어도 도착, 블록당 1회)
             try:
                 sync.schedule_refill(a["id"], nm, b["start"], b["reset_at"])
             except Exception as e:
                 log.warning("예약 발송 실패: %s", e)
-            if ns["last_start"] != b["start"]:
+
+            if ns["last_start"] != b["start"]:  # 새 윈도우 시작 = 직전 윈도우가 리셋된 것
                 if ns["last_start"] is not None:
-                    _notify(f"{nm} 재충전 완료", "새 5시간 윈도우 시작.", phone=False)
-                ns.update(last_start=b["start"], warned_ratio=False, warned_soon=False,
-                          warned_eta=False)
-            eta = b.get("eta")
-            if eta is not None and not ns["warned_eta"]:
-                _notify(f"{nm} 소진 예측", f"이 속도면 {eta.strftime('%H:%M')}쯤 한도 도달 예상. 아껴 써.")
-                ns["warned_eta"] = True
-            if 0 < b["remaining_sec"] <= soon_sec and not ns["warned_soon"]:
-                _notify(f"{nm} 리셋 임박", f"{b['remaining_sec'] // 60}분 뒤 5시간 리셋.")
-                ns["warned_soon"] = True
-            if b["ratio"] is not None and b["ratio"] >= warn and not ns["warned_ratio"]:
-                _notify(f"{nm} 사용량 경고", f"평소 최대의 {int(b['ratio'] * 100)}%. 곧 끊길 수 있어.")
-                ns["warned_ratio"] = True
+                    _notify(f"{nm} 재충전 완료", "5시간 사용량 한도가 초기화되었습니다.", phone=False)
+                ns["last_start"] = b["start"]
         for dead in [k for k in self._ns if k not in live]:
             self._ns.pop(dead, None)
 
@@ -791,23 +778,30 @@ class RefuelApp:
         self.root.deiconify()
         win = tk.Toplevel(self.root, bg=BG)
         win.title("Refuel — 사용 동의")
-        win.configure(padx=22, pady=20)
-        win.resizable(False, False)
+        win.configure(padx=22, pady=18)
         win.transient(self.root)
         result = {"ok": False}
 
         tk.Label(win, text="사용 전 동의", bg=BG, fg=self.accent(),
                  font=(F, 14, "bold")).pack(anchor="w")
-        box = tk.Text(win, width=52, height=15, bg=PANEL, fg=TX, bd=0,
-                      relief="flat", wrap="word", font=(F, 9),
-                      padx=12, pady=10, highlightbackground=BORDER, highlightthickness=1)
-        box.insert("1.0", core.DISCLAIMER_TEXT)
-        box.config(state="disabled")
-        box.pack(fill="both", expand=True, pady=(10, 12))
 
+        # 버튼 영역을 '먼저' 하단에 고정한다. 텍스트를 먼저 넣으면 창이 커지면서
+        # 화면 밖으로 밀려 동의 버튼이 안 보이는 문제가 생긴다.
         agree = tk.BooleanVar(value=False)
-        btn = tk.Button(win, text="동의하고 시작", bg=BORDER, fg=MUT, font=(F, 10, "bold"),
+        row = tk.Frame(win, bg=BG)
+        row.pack(side="bottom", fill="x", pady=(12, 0))
+        chk = tk.Checkbutton(win, text="위 내용을 읽었으며 이에 동의합니다.", variable=agree,
+                             bg=BG, fg=TX, font=(F, 10), selectcolor=PANEL,
+                             activebackground=BG, activeforeground=TX, bd=0,
+                             highlightthickness=0)
+        chk.pack(side="bottom", anchor="w")
+
+        btn = tk.Button(row, text="동의하고 시작", bg=BORDER, fg=MUT, font=(F, 10, "bold"),
                         bd=0, relief="flat", state="disabled")
+        btn.pack(side="right", ipadx=16, ipady=5)
+        tk.Button(row, text="동의 안 함 (종료)", bg=BG, fg=MUT, font=(F, 9), bd=0,
+                  relief="flat", activebackground=BG, cursor="hand2",
+                  command=win.destroy).pack(side="left")
 
         def toggle():
             if agree.get():
@@ -815,10 +809,21 @@ class RefuelApp:
             else:
                 btn.config(state="disabled", bg=BORDER, fg=MUT, cursor="")
 
-        tk.Checkbutton(win, text="위 내용을 읽었으며 이에 동의합니다.", variable=agree,
-                       command=toggle, bg=BG, fg=TX, font=(F, 10), selectcolor=PANEL,
-                       activebackground=BG, activeforeground=TX, bd=0,
-                       highlightthickness=0).pack(anchor="w")
+        chk.config(command=toggle)
+
+        # 남은 공간에 본문(스크롤 가능). 화면이 작아도 버튼은 항상 보인다.
+        body = tk.Frame(win, bg=BG)
+        body.pack(side="top", fill="both", expand=True, pady=(10, 4))
+        sb = tk.Scrollbar(body)
+        sb.pack(side="right", fill="y")
+        box = tk.Text(body, width=50, height=11, bg=PANEL, fg=TX, bd=0,
+                      relief="flat", wrap="word", font=(F, 9), padx=12, pady=10,
+                      highlightbackground=BORDER, highlightthickness=1,
+                      yscrollcommand=sb.set)
+        box.insert("1.0", core.DISCLAIMER_TEXT)
+        box.config(state="disabled")
+        box.pack(side="left", fill="both", expand=True)
+        sb.config(command=box.yview)
 
         def accept():
             core.set_consented()
@@ -826,12 +831,14 @@ class RefuelApp:
             win.destroy()
 
         btn.config(command=accept)
-        row = tk.Frame(win, bg=BG)
-        row.pack(fill="x", pady=(14, 0))
-        tk.Button(row, text="동의 안 함 (종료)", bg=BG, fg=MUT, font=(F, 9), bd=0,
-                  relief="flat", activebackground=BG, cursor="hand2",
-                  command=win.destroy).pack(side="left")
-        btn.pack(in_=row, side="right", ipadx=16, ipady=5)
+
+        # 창이 화면을 벗어나지 않게 크기 제한 + 중앙 배치
+        win.update_idletasks()
+        w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        h = min(h, int(sh * 0.8))
+        win.geometry(f"{w}x{h}+{max(0, (sw - w) // 2)}+{max(0, (sh - h) // 2)}")
+        win.minsize(420, 360)
 
         win.protocol("WM_DELETE_WINDOW", win.destroy)
         win.grab_set()
