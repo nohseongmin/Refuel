@@ -251,9 +251,14 @@ async function scheduleLocalNotifs(agents,force){
  if(!await ensurePerm()){rlog('warn','알림 권한 없음 - 예약 취소');return;}
  await ensureChannel();
  let id=100;
- const notifs=items.map(i=>({id:id++,title:i.name+' 재충전 완료',body:'5시간 사용량 한도가 초기화되었습니다.',channelId:CH,schedule:{at:new Date(i.at)}}));
- try{await LN.schedule({notifications:notifs});rlog('info','로컬 알림 '+notifs.length+'건 예약');}
- catch(e){rlog('error','로컬 알림 예약 실패: '+(e&&e.message||e));}
+ // allowWhileIdle: Doze(절전) 중에도 발화. 이게 빠지면 앱 닫힌 채 폰 잠들면 안 울린다.
+ const notifs=items.map(i=>({id:id++,title:i.name+' 재충전 완료',body:'5시간 사용량 한도가 초기화되었습니다.',
+   channelId:CH,schedule:{at:new Date(i.at),allowWhileIdle:true}}));
+ try{
+  await LN.schedule({notifications:notifs});
+  let pend=0;try{pend=((await LN.getPending()).notifications||[]).length;}catch(_){}
+  rlog('info','로컬 알림 '+notifs.length+'건 예약(대기 '+pend+'건) · 리셋 '+new Date(items[0].at).toLocaleString('ko-KR'));
+ }catch(e){rlog('error','로컬 알림 예약 실패: '+(e&&e.message||e));}
 }
 async function testNotif(btn){
  const LN=nativeLN();
@@ -285,7 +290,8 @@ function openSettings(){
    ${PAIRED?'<button id="s_unpair" style="width:100%">연결 해제</button>':''}</div>
   <div class="setup"><b>알림</b>${toggleRow('알림 받기','rf_notif')}${toggleRow('소리','rf_sound')}${toggleRow('진동','rf_vibe')}
    <button id="s_test" style="width:100%;margin-top:8px">테스트 알림</button>
-   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">폰이 리셋 시각에 직접 알림을 울립니다. PC가 꺼져 있어도 동작합니다.</span></div>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">폰이 리셋 시각에 직접 알림을 울립니다. PC가 꺼져 있어도 동작합니다.</span>
+   <span style="color:var(--warn);font-size:11px;display:block;margin-top:6px">⚠ 알림이 안 오면: 폰 <b>설정 → 애플리케이션 → Refuel → 배터리 → 제한 없음(허용)</b>으로 바꿔주세요. 삼성·샤오미 등은 절전 기능이 예약 알림을 꺼버립니다.</span></div>
   <div class="setup"><b>🩺 진단 로그</b>
    <div id="logbox" style="max-height:150px;overflow:auto;background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:10px;font-family:Consolas,monospace;white-space:pre-wrap"></div>
    <button id="logshare">공유</button> <button id="logcopy">복사</button> <button id="logclear">지우기</button></div>
