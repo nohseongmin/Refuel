@@ -350,8 +350,9 @@ document.addEventListener('DOMContentLoaded',async()=>{
  const AdMob=Cap.Plugins&&Cap.Plugins.AdMob;
  if(!AdMob){rlog('error','AdMob 플러그인 없음(네이티브 등록 실패)');return}
  // ↓↓↓ 출시 전 실제 AdMob ID로 교체 (지금은 Google 공식 테스트 ID) ↓↓↓
- const TEST_BANNER='ca-app-pub-3940256099942544/6300978111';
  const IS_TESTING=true;   // 실제 출시 시 false
+ const isIOS=(Cap.getPlatform&&Cap.getPlatform()==='ios');
+ const TEST_BANNER=isIOS?'ca-app-pub-3940256099942544/2934735716':'ca-app-pub-3940256099942544/6300978111';
  try{
   await AdMob.initialize({initializeForTesting:IS_TESTING});
   rlog('info','AdMob 초기화 완료'+(IS_TESTING?'(테스트 광고)':'(실제 광고)'));
