@@ -34,6 +34,7 @@ android-app/android/keystore.properties
 android-app/*.aab
 android-app/*.apk
 android-app/*.idsig
+android-app/*.zip
 # iOS 생성물/의존성 (프로젝트는 커밋, Pods·빌드는 CI에서 생성)
 android-app/ios/App/Pods/
 android-app/ios/App/build/

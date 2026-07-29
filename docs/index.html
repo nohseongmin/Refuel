@@ -61,7 +61,7 @@ function demoState(){
   daily.push([d.toISOString().slice(0,10), sampleM[6-i]*1e6]);}
  return {ts:now, total_events:1287, agents:[{
   id:'claude-code', name:'Claude Code', today:20450000, week:174000000,
-  block:{reset:now+2*3600+15*60+30, tok:3585015, ratio:0.45, eta:null},
+  block:{reset:now+2*3600+15*60+30, tok:3585015, ratio:0.45},
   wk:{reset:now+3*day+4*3600, ratio:0.62}, daily}]};
 }
 
