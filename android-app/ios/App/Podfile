@@ -17,7 +17,9 @@ end
 
 target 'App' do
   capacitor_pods
-  # Add your Pods here
+  # AdMob 플러그인 6.2.0은 구글 SDK 11.x의 UMP API를 쓴다. 12.x는 클래스명이 바뀌어
+  # (UMPConsentStatus→ConsentStatus) 컴파일이 깨지므로 11.x로 고정한다.
+  pod 'Google-Mobile-Ads-SDK', '~> 11.13'
 end
 
 post_install do |installer|
