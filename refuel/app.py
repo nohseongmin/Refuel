@@ -49,6 +49,8 @@ MUT = "#8a93a4"
 WARN = "#f5c451"
 DNG = "#f3766b"
 BLU = "#5a8dee"
+GRASS = ["#161b26", "#9be15d", "#26a641"]   # 잔디: 안 씀 / 썼음(연두) / 다 씀(초록)
+GRASS_CELL = 11                              # 칸 한 변(px). 간격 포함
 
 F = "Malgun Gothic"   # __init__에서 자동선택으로 덮어씀
 REFRESH_SECONDS = 20
@@ -276,9 +278,11 @@ class AgentCard:
         self.dot.pack(side="left")
         self.name_lbl = _lbl(h, name, fg=TX, size=11, bold=True)
         self.name_lbl.pack(side="left", padx=6)
+        self.hstreak = _lbl(h, "", size=9)      # 접힌 상태에서도 연속일수는 보이게
+        self.hstreak.pack(side="left")
         self.hcount = _lbl(h, "--:--:--", size=11)
         self.hcount.pack(side="right", padx=14)
-        for wdg in (h, self.chev, self.dot, self.name_lbl, self.hcount):
+        for wdg in (h, self.chev, self.dot, self.name_lbl, self.hstreak, self.hcount):
             wdg.bind("<Button-1>", lambda e: self.app.toggle(self.id))
 
         self.hbar = tk.Canvas(self.outer, height=4, bg=TRACK, highlightthickness=0)
@@ -316,6 +320,18 @@ class AgentCard:
         self.week_val, self.week_sub = self._mkcard(grid, "이번 주", 2)
         for i in range(3):
             grid.columnconfigure(i, weight=1)
+        self.streak_lbl = _lbl(d, "", fg=TX, size=10, bold=True)
+        self.streak_lbl.pack(anchor="w", padx=16, pady=(10, 4))
+        self.grass = tk.Canvas(d, height=7 * GRASS_CELL, bg=PANEL, highlightthickness=0)
+        self.grass.pack(fill="x", padx=16, pady=(0, 4))
+        legend = tk.Frame(d, bg=PANEL)
+        legend.pack(anchor="w", padx=16, pady=(0, 10))
+        _lbl(legend, "적음", size=8).pack(side="left", padx=(0, 4))
+        for c in GRASS:
+            sw = tk.Canvas(legend, width=9, height=9, bg=c, highlightthickness=0)
+            sw.pack(side="left", padx=1)
+        _lbl(legend, "많음 · 초록 = 한도까지 사용", size=8).pack(side="left", padx=(4, 0))
+
         _lbl(d, "최근 7일").pack(anchor="w", padx=16, pady=(12, 4))
         self.daily = tk.Frame(d, bg=PANEL)
         self.daily.pack(fill="x", padx=16, pady=(0, 12))
@@ -363,7 +379,34 @@ class AgentCard:
             rtxt = f" · 추정 {int(self.wk_ratio * 100)}%" if self.wk_ratio is not None else ""
             self.week_sub.config(text=f"{when} · D-{days}")
             self.wk.config(text=f"주간 {_fmt_n(wk.get('tokens'))} 토큰 · {when} (D-{days}){rtxt}")
+        st = a.get("streak") or {}
+        cur, best = st.get("current", 0), st.get("best", 0)
+        # Tk는 이모지를 단색으로 그려서 뭉개진다 → PC는 글자만 쓴다(폰은 이모지 그대로).
+        self.hstreak.config(text=f"연속 {cur}일" if cur else "", fg=self.app.accent())
+        self.streak_lbl.config(
+            text=f"{cur}일 연속 사용 · 최고 {best}일" if cur else f"연속 기록 없음 · 최고 {best}일",
+            fg=self.app.accent() if cur else MUT)
+        self._render_grass(st)
         self._render_daily(a.get("daily", []))
+
+    def _render_grass(self, streak):
+        """깃허브 잔디식 달력. 열=주, 행=요일(월~일). 오늘이 마지막 칸."""
+        self.grass.delete("all")
+        levels = (streak or {}).get("levels") or ""
+        if not levels:
+            return
+        try:
+            start = datetime.strptime(streak["from"], "%Y-%m-%d").date()
+        except (KeyError, ValueError, TypeError):
+            return
+        pad = start.weekday()          # 첫 칸이 무슨 요일인지에 맞춰 첫 열을 비운다
+        gap = 2
+        size = GRASS_CELL - gap
+        for i, ch in enumerate(levels):
+            col, row = divmod(i + pad, 7)
+            x, y = col * GRASS_CELL, row * GRASS_CELL
+            fill = GRASS[int(ch)] if ch.isdigit() and int(ch) < len(GRASS) else GRASS[0]
+            self.grass.create_rectangle(x, y, x + size, y + size, fill=fill, width=0)
 
     def _render_daily(self, daily):
         for ch in self.daily.winfo_children():

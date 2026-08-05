@@ -72,6 +72,7 @@ $checks = @{
     "AdMob 배너"      = $html.Contains("showBanner")
     "데모 모드"       = $html.Contains("demoState")
     "앱 내 QR 스캐너" = $html.Contains("function startScan")
+    "잔디/연속기록"   = $html.Contains("function grassHTML")
 }
 $fail = $false
 foreach ($k in $checks.Keys) {

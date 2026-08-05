@@ -21,6 +21,7 @@ LOG_PATH = CONFIG_DIR / "refuel.log"
 SESSION_WINDOW = timedelta(hours=5)     # Claude 구독 5시간 롤링 윈도우
 SESSION_WINDOW_SEC = int(SESSION_WINDOW.total_seconds())   # 18000 — UI 진행바 계산용(윈도우와 항상 일치)
 WEEKLY_WINDOW_SEC = 7 * 24 * 3600        # 주간 윈도우 길이(초)
+GRASS_DAYS = 112                         # 잔디 길이(16주) — 폰 카드 폭에 맞춘 값
 SORT_LAST = 10 ** 9                      # 활성 블록 없는 에이전트를 정렬 맨 뒤로 보내는 센티넬
 
 log = logging.getLogger("refuel")
@@ -341,6 +342,36 @@ def _weekly_ceiling(agent, dow, today):
     return max((v for k, v in buckets.items() if k < cur_ws), default=0)
 
 
+def _day_level(tokens, full):
+    """잔디 한 칸의 진하기. 0=안 씀, 1=썼음(연두), 2=한도까지 다 씀(초록).
+
+    full(5시간 한도 추정치)만큼 쓴 날 = 최소 한 번은 한도를 꽉 채운 날.
+    추정치가 아직 없으면(이력 부족) 진하기를 올리지 않고 1에 머문다.
+    """
+    if tokens <= 0:
+        return 0
+    return 2 if (full and tokens >= full) else 1
+
+
+def _streak(levels):
+    """levels: 과거→오늘 순 진하기 배열. (현재 연속일수, 최고 연속일수)를 반환.
+
+    오늘은 아직 안 썼을 수 있으므로, 오늘이 비었으면 어제까지로 현재 연속을 센다.
+    (하루가 끝나기도 전에 연속이 끊긴 것처럼 보이면 안 되니까)
+    """
+    best = run = 0
+    for lv in levels:
+        run = run + 1 if lv else 0
+        best = max(best, run)
+    if levels and not levels[-1]:
+        run = 0
+        for lv in reversed(levels[:-1]):
+            if not lv:
+                break
+            run += 1
+    return run, best
+
+
 _Clock = namedtuple("_Clock", "utc local today wk_reset wk_next")
 
 
@@ -362,17 +393,20 @@ def _agent_breakdown(events, agent, clock):
             today_tok += e["total"]
         if e["ts"].astimezone() >= clock.wk_reset:
             week_tok += e["total"]
-        if 0 <= (today - d).days < 7:
+        if d <= today:      # 잔디를 채우려면 로그에 있는 모든 날을 모은다(미래 날짜만 제외)
             r = daily.setdefault(d, [0, 0, 0, 0])
             r[0] += e["total"]; r[1] += e["inp"]; r[2] += e["out"]; r[3] += e["cache"]
 
     if daily:
         _persist_daily(agent, {d: tuple(r) for d, r in daily.items()})
     hist = _history_daily(agent)
-    daily_list = []
-    for i in range(6, -1, -1):
-        d = today - timedelta(days=i)
-        daily_list.append((d, max(daily.get(d, [0])[0], hist.get(d.isoformat(), 0))))
+
+    def day_tokens(d):
+        """그날 사용량 — 이번 스캔 결과와 저장된 이력 중 큰 값(로그가 지워져도 잔디는 남는다)."""
+        return max(daily.get(d, [0])[0], hist.get(d.isoformat(), 0))
+
+    daily_list = [(today - timedelta(days=i), day_tokens(today - timedelta(days=i)))
+                  for i in range(6, -1, -1)]
 
     blocks = _compute_blocks(events)
     ceiling = 0
@@ -392,6 +426,13 @@ def _agent_breakdown(events, agent, clock):
                 "remaining_sec": max(0, int((end - now).total_seconds())),
                 "ratio": (last["tokens"] / ceiling) if ceiling else None,
             }
+    # 잔디: 오늘로 끝나는 GRASS_DAYS일치 진하기를 한 글자씩 이어붙인 문자열("0112...").
+    # 날짜 배열 대신 문자열이라 폰으로 보내는 양이 1/10 이하다.
+    grass_from = today - timedelta(days=GRASS_DAYS - 1)
+    levels = [_day_level(day_tokens(grass_from + timedelta(days=i)), ceiling)
+              for i in range(GRASS_DAYS)]
+    cur_streak, best_streak = _streak(levels)
+
     wk_ceiling = _weekly_ceiling(agent, CONFIG["weekly_reset_dow"], today)
     weekly = {
         "tokens": week_tok,
@@ -406,6 +447,9 @@ def _agent_breakdown(events, agent, clock):
         "daily": daily_list,
         "weekly": weekly,
         "block": block,
+        "streak": {"current": cur_streak, "best": best_streak,
+                   "from": grass_from.isoformat(),
+                   "levels": "".join(str(v) for v in levels)},
     }
 
 

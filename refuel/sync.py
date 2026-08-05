@@ -162,6 +162,7 @@ def _compact(state):
                        "ratio": b["ratio"]} if b else None),
             "wk": {"reset": _epoch(wk.get("reset_at")), "ratio": wk.get("ratio")},
             "daily": [[d.isoformat(), v] for d, v in a.get("daily", [])],
+            "streak": a.get("streak"),
         })
     return {"v": 1, "ts": int(datetime.now().timestamp()), "agents": agents}
 
