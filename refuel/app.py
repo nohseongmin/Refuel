@@ -49,8 +49,8 @@ MUT = "#8a93a4"
 WARN = "#f5c451"
 DNG = "#f3766b"
 BLU = "#5a8dee"
-GRASS = ["#161b26", "#9be15d", "#26a641"]   # 잔디: 안 씀 / 썼음(연두) / 다 씀(초록)
-GRASS_CELL = 11                              # 칸 한 변(px). 간격 포함
+# 잔디 5단계(연두→초록) + 안 쓴 날. 사용량이 5시간 한도 추정치의 몇 %인지에 비례.
+GRASS = ["#161b26", "#d9f99d", "#a3e635", "#65d64f", "#3aba48", "#1a9c3c"]
 
 F = "Malgun Gothic"   # __init__에서 자동선택으로 덮어씀
 REFRESH_SECONDS = 20
@@ -291,48 +291,36 @@ class AgentCard:
         self.detail = tk.Frame(self.outer, bg=PANEL)
         self._build_detail()
 
-    def _mkcard(self, parent, label, col):
-        f = tk.Frame(parent, bg=CARD)
-        f.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else 6, 0))
-        _lbl(f, label, size=8, bg=CARD).pack(anchor="w", padx=10, pady=(8, 0))
-        val = _lbl(f, "0", fg=TX, size=15, bold=True, bg=CARD)
-        val.pack(anchor="w", padx=10, pady=(1, 0))
-        sub = _lbl(f, "", size=8, bg=CARD)
-        sub.pack(anchor="w", padx=10, pady=(0, 8))
-        return val, sub
-
     def _build_detail(self):
         d = self.detail
         self.count = _lbl(d, "--:--:--", fg=TX, size=38, bold=True)
-        self.count.pack(anchor="w", padx=16, pady=(2, 0))
+        self.count.pack(anchor="w", padx=16, pady=(2, 6))
+
+        # 잔디가 이 카드의 주인공 — 카운트다운 바로 밑, 카드 폭을 꽉 채운다.
+        self.streak_lbl = _lbl(d, "", fg=TX, size=10, bold=True)
+        self.streak_lbl.pack(anchor="w", padx=16, pady=(0, 4))
+        self._streak_data = None
+        self.grass = tk.Canvas(d, height=80, bg=PANEL, highlightthickness=0)
+        self.grass.pack(fill="x", padx=16, pady=(0, 4))
+        self.grass.bind("<Configure>", lambda e: self._render_grass(self._streak_data))
+        legend = tk.Frame(d, bg=PANEL)
+        legend.pack(anchor="w", padx=16, pady=(0, 12))
+        _lbl(legend, "적음", size=8).pack(side="left", padx=(0, 4))
+        for c in GRASS[1:]:
+            tk.Canvas(legend, width=9, height=9, bg=c,
+                      highlightthickness=0).pack(side="left", padx=1)
+        _lbl(legend, "많음 · 진할수록 한도까지 사용", size=8).pack(side="left", padx=(4, 0))
+
         self.sub = _lbl(d, "", size=10)
-        self.sub.pack(anchor="w", padx=16, pady=(4, 2))
+        self.sub.pack(anchor="w", padx=16, pady=(0, 2))
         self.bd = _lbl(d, "")
         self.bd.pack(anchor="w", padx=16, pady=(0, 2))
         self.wk = _lbl(d, "")
         self.wk.pack(anchor="w", padx=16, pady=(0, 4))
         self.bar = tk.Canvas(d, height=8, bg=TRACK, highlightthickness=0)
         self.bar.pack(fill="x", padx=16, pady=(2, 12))
-        grid = tk.Frame(d, bg=PANEL)
-        grid.pack(fill="x", padx=12)
-        self.cw_val, _ = self._mkcard(grid, "현재 윈도우", 0)
-        self.today_val, _ = self._mkcard(grid, "오늘", 1)
-        self.week_val, self.week_sub = self._mkcard(grid, "이번 주", 2)
-        for i in range(3):
-            grid.columnconfigure(i, weight=1)
-        self.streak_lbl = _lbl(d, "", fg=TX, size=10, bold=True)
-        self.streak_lbl.pack(anchor="w", padx=16, pady=(10, 4))
-        self.grass = tk.Canvas(d, height=7 * GRASS_CELL, bg=PANEL, highlightthickness=0)
-        self.grass.pack(fill="x", padx=16, pady=(0, 4))
-        legend = tk.Frame(d, bg=PANEL)
-        legend.pack(anchor="w", padx=16, pady=(0, 10))
-        _lbl(legend, "적음", size=8).pack(side="left", padx=(0, 4))
-        for c in GRASS:
-            sw = tk.Canvas(legend, width=9, height=9, bg=c, highlightthickness=0)
-            sw.pack(side="left", padx=1)
-        _lbl(legend, "많음 · 초록 = 한도까지 사용", size=8).pack(side="left", padx=(4, 0))
 
-        _lbl(d, "최근 7일").pack(anchor="w", padx=16, pady=(12, 4))
+        _lbl(d, "최근 7일").pack(anchor="w", padx=16, pady=(0, 4))
         self.daily = tk.Frame(d, bg=PANEL)
         self.daily.pack(fill="x", padx=16, pady=(0, 12))
 
@@ -356,28 +344,23 @@ class AgentCard:
             self.primary = "5h"
             self.reset_at = b["reset_at"]
             self.usage_ratio = b["ratio"]
-            self.cw_val.config(text=_fmt_n(b["tokens"]))
             extra = f" · 추정한도 {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
             self.sub.config(text=f"5시간 리셋 {b['reset_at'].strftime('%H:%M')} · 윈도우 {_fmt_n(b['tokens'])} 토큰{extra}")
-            self.bd.config(text=f"입력 {_fmt_short(b['inp'])} · 출력 {_fmt_short(b['out'])} · 캐시 {_fmt_short(b['cache'])}")
+            self.bd.config(text=f"오늘 {_fmt_n(a['today_tokens'])} · 입력 {_fmt_short(b['inp'])} · 출력 {_fmt_short(b['out'])} · 캐시 {_fmt_short(b['cache'])}")
         else:
             self.reset_at = None
             self.usage_ratio = None
-            self.cw_val.config(text="0")
-            self.bd.config(text="")
+            self.bd.config(text=f"오늘 {_fmt_n(a['today_tokens'])}")
             if wk_over:
                 self.primary = "weekly"
                 self.sub.config(text="주간 한도 도달 - 풀릴 때까지 대기")
             else:
                 self.primary = "full"
                 self.sub.config(text="활성 윈도우 없음 · 주간도 여유")
-        self.today_val.config(text=_fmt_n(a["today_tokens"]))
-        self.week_val.config(text=_fmt_n(a["week_tokens"]))
         if self.wk_reset:
             days = (self.wk_rem or 0) // 86400
             when = f"리셋 {_WD[self.wk_reset.weekday()]} {self.wk_reset.strftime('%H:%M')}"
             rtxt = f" · 추정 {int(self.wk_ratio * 100)}%" if self.wk_ratio is not None else ""
-            self.week_sub.config(text=f"{when} · D-{days}")
             self.wk.config(text=f"주간 {_fmt_n(wk.get('tokens'))} 토큰 · {when} (D-{days}){rtxt}")
         st = a.get("streak") or {}
         cur, best = st.get("current", 0), st.get("best", 0)
@@ -390,7 +373,11 @@ class AgentCard:
         self._render_daily(a.get("daily", []))
 
     def _render_grass(self, streak):
-        """깃허브 잔디식 달력. 열=주, 행=요일(월~일). 오늘이 마지막 칸."""
+        """깃허브 잔디식 달력. 열=주, 행=요일(월~일). 오늘이 마지막 칸.
+
+        칸 크기는 캔버스 폭에서 역산해 가로를 꽉 채운다(창 크기 따라 다시 그림).
+        """
+        self._streak_data = streak
         self.grass.delete("all")
         levels = (streak or {}).get("levels") or ""
         if not levels:
@@ -400,11 +387,15 @@ class AgentCard:
         except (KeyError, ValueError, TypeError):
             return
         pad = start.weekday()          # 첫 칸이 무슨 요일인지에 맞춰 첫 열을 비운다
-        gap = 2
-        size = GRASS_CELL - gap
+        cols = -(-(len(levels) + pad) // 7)
+        cell = max(4.0, self.grass.winfo_width() / cols)
+        size = cell - max(1, round(cell * 0.15))
+        height = int(cell * 7)
+        if self.grass.winfo_height() != height:
+            self.grass.config(height=height)   # 칸 크기에 맞춰 캔버스 높이도 같이
         for i, ch in enumerate(levels):
             col, row = divmod(i + pad, 7)
-            x, y = col * GRASS_CELL, row * GRASS_CELL
+            x, y = col * cell, row * cell
             fill = GRASS[int(ch)] if ch.isdigit() and int(ch) < len(GRASS) else GRASS[0]
             self.grass.create_rectangle(x, y, x + size, y + size, fill=fill, width=0)
 
@@ -518,10 +509,26 @@ class RefuelApp:
         _btn(top, "⚙", self._open_settings, size=11).pack(side="right", padx=(8, 0))
         self.meta = _lbl(top, "", bg=BG)
         self.meta.pack(side="right")
-        self.cards_box = tk.Frame(wrap, bg=BG)
-        self.cards_box.pack(fill="both", expand=True)
+        # 잔디가 자리를 크게 차지해 '최근 7일'이 아래로 밀린다 → 휠로 내려볼 수 있게 감싼다.
+        self.scroll = tk.Canvas(wrap, bg=BG, highlightthickness=0)
+        self.scroll.pack(fill="both", expand=True)
+        self.cards_box = tk.Frame(self.scroll, bg=BG)
+        self._scroll_win = self.scroll.create_window((0, 0), window=self.cards_box, anchor="nw")
+        self.cards_box.bind(
+            "<Configure>", lambda e: self.scroll.config(scrollregion=self.scroll.bbox("all")))
+        self.scroll.bind(
+            "<Configure>", lambda e: self.scroll.itemconfigure(self._scroll_win, width=e.width))
+        # 포인터가 목록 위에 있을 때만 휠을 가로챈다(설정창 등 다른 창 스크롤을 뺏지 않도록).
+        self.scroll.bind("<Enter>", lambda e: self.scroll.bind_all("<MouseWheel>", self._on_wheel))
+        self.scroll.bind("<Leave>", lambda e: self.scroll.unbind_all("<MouseWheel>"))
         self.empty = _lbl(self.cards_box, "불러오는 중…", size=10, bg=BG)
         self.empty.pack(anchor="w", pady=4)
+
+    def _on_wheel(self, e):
+        first, last = self.scroll.yview()
+        if first <= 0.0 and last >= 1.0:      # 다 보이면 스크롤하지 않는다
+            return
+        self.scroll.yview_scroll(-1 if e.delta > 0 else 1, "units")
 
     # ---------- 상태 ----------
     def _check_notifications(self, s):

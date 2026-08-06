@@ -11,7 +11,8 @@
 <style>
 :root{--bg:#0d0f14;--panel:#141821;--card:#11151d;--bd:#252c3a;--track:#0a0c11;
 --tx:#e7eaf0;--mut:#8a93a4;--acc:#46e08a;--warn:#f5c451;--dng:#f3766b;--blu:#5a8dee;
---g0:#161b26;--g1:#9be15d;--g2:#26a641}   /* 잔디: 안 씀 / 썼음(연두) / 다 씀(초록) */
+/* 잔디 5단계(연두→초록) — 사용량이 5시간 한도 추정치의 몇 %인지에 비례 */
+--g0:#161b26;--g1:#d9f99d;--g2:#a3e635;--g3:#65d64f;--g4:#3aba48;--g5:#1a9c3c}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:'Malgun Gothic',system-ui,sans-serif;
 padding:max(16px,env(safe-area-inset-top)) 16px 32px}
@@ -36,12 +37,15 @@ padding:max(16px,env(safe-area-inset-top)) 16px 32px}
 .drow .dv{width:44px;text-align:right;color:var(--mut);font-family:Consolas,monospace}
 .streak{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:13px;font-weight:700;color:var(--acc)}
 .streak .off{color:var(--mut);font-weight:400}
-/* 칸은 폭에 맞춰 줄되, 넓은 화면에서 우스꽝스럽게 커지지 않게 상한을 둔다 */
+/* 카드 폭을 꽉 채운다(칸 크기는 폭에서 자동). 넓은 화면에서만 상한을 둔다 */
 .grass{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,1fr);
-grid-auto-columns:minmax(0,1fr);gap:2px;margin-top:8px;max-width:400px}
+grid-auto-columns:minmax(0,1fr);gap:2px;margin-top:6px;width:100%;max-width:520px}
 .grass i{aspect-ratio:1;border-radius:2px;background:var(--g0)}
 .grass i.l1{background:var(--g1)}
 .grass i.l2{background:var(--g2)}
+.grass i.l3{background:var(--g3)}
+.grass i.l4{background:var(--g4)}
+.grass i.l5{background:var(--g5)}
 .legend{display:flex;align-items:center;gap:4px;margin-top:6px;font-size:10px;color:var(--mut)}
 .legend b{width:9px;height:9px;border-radius:2px;display:inline-block}
 .setup{background:var(--panel);border:1px dashed var(--bd);border-radius:14px;padding:16px;font-size:13px;line-height:1.9}
@@ -71,8 +75,8 @@ function demoState(){
  for(let i=6;i>=0;i--){const d=new Date(base);d.setDate(d.getDate()-i);
   daily.push([d.toISOString().slice(0,10), sampleM[6-i]*1e6]);}
  const N=112, from=new Date(base);from.setDate(from.getDate()-(N-1));
- let lv='';                                   // 샘플 잔디: 초반은 듬성듬성, 최근 12일은 연속
- for(let i=0;i<N;i++)lv+= i>=N-12?(i%4===0?'2':'1') : (i%3===0?'0':(i%7===0?'2':'1'));
+ let lv='';                       // 샘플 잔디: 초반은 듬성듬성, 최근 12일은 진하게 연속
+ for(let i=0;i<N;i++)lv+= i>=N-12 ? String(3+(i%3)) : (i%3===0?'0':String(1+(i%5)));
  return {ts:now, total_events:1287, agents:[{
   id:'claude-code', name:'Claude Code', today:20450000, week:174000000,
   block:{reset:now+2*3600+15*60+30, tok:3585015, ratio:0.45},
@@ -182,12 +186,13 @@ function grassHTML(st){
  const pad=(d0.getDay()+6)%7;                    // 첫 칸 요일에 맞춰 첫 열을 비운다
  let cells='';
  for(let i=0;i<pad;i++)cells+='<i style="visibility:hidden"></i>';
- for(const c of lv)cells+=`<i class="l${c==='2'?2:c==='1'?1:0}"></i>`;
+ for(const c of lv)cells+=`<i class="l${Math.min(5,Math.max(0,Number(c)||0))}"></i>`;
  const cur=num(st.current), best=num(st.best);
+ const sw=[1,2,3,4,5].map(i=>`<b style="background:var(--g${i})"></b>`).join('');
  return `<div class="streak">${cur?`🔥 <span>${cur}일 연속 사용</span>`:'<span class="off">연속 기록 없음</span>'}
    <span class="off">· 최고 ${best}일</span></div>
   <div class="grass">${cells}</div>
-  <div class="legend">적음<b style="background:var(--g0)"></b><b style="background:var(--g1)"></b><b style="background:var(--g2)"></b>많음 · 초록 = 한도까지 사용</div>`;
+  <div class="legend">적음${sw}많음 · 진할수록 한도까지 사용</div>`;
 }
 function agentCardsHTML(agents){
  const now=Date.now()/1000;
@@ -216,13 +221,13 @@ function agentCardsHTML(agents){
    const dt=new Date(d[0]+'T00:00:00');
    const lbl=isNaN(dt)?'--':`${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')} ${WD[(dt.getDay()+6)%7]}`;
    return `<div class="drow"><div class="dl">${lbl}</div><div class="dt"><div class="df" style="width:${(d[1]/mx*100).toFixed(0)}%"></div></div><div class="dv">${fmtS(d[1])}</div></div>`}).join('');
+  // 잔디가 주인공 — 카운트다운 바로 밑에 카드 폭을 꽉 채워 놓고, 수치는 그 아래로.
   return `<div class="card"><div class="aname"><span>${name}</span></div>
    <div class="count" style="color:${col}" data-reset="${a.block?bReset:''}">${count}</div>
-   <div class="sub">${sub}</div><div class="bar"><div class="fill" style="width:${(prog*100).toFixed(1)}%;background:${col}"></div></div>
-   <div class="sub">${wkline}</div>
-   <div class="grid"><div class="mini"><div class="l">오늘</div><div class="v">${fmtN(a.today)}</div></div>
-   <div class="mini"><div class="l">이번 주</div><div class="v">${fmtN(a.week)}</div></div></div>
    ${grassHTML(a.streak)}
+   <div class="sub">${sub}</div><div class="bar"><div class="fill" style="width:${(prog*100).toFixed(1)}%;background:${col}"></div></div>
+   <div class="sub">오늘 ${fmtN(a.today)} 토큰</div>
+   <div class="sub">${wkline}</div>
    <div class="days">${days}</div></div>`}).join('');
 }
 function connectHTML(){

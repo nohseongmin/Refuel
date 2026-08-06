@@ -22,6 +22,7 @@ SESSION_WINDOW = timedelta(hours=5)     # Claude 구독 5시간 롤링 윈도우
 SESSION_WINDOW_SEC = int(SESSION_WINDOW.total_seconds())   # 18000 — UI 진행바 계산용(윈도우와 항상 일치)
 WEEKLY_WINDOW_SEC = 7 * 24 * 3600        # 주간 윈도우 길이(초)
 GRASS_DAYS = 112                         # 잔디 길이(16주) — 폰 카드 폭에 맞춘 값
+GRASS_LEVELS = 5                         # 잔디 진하기 단계(연두→초록)
 SORT_LAST = 10 ** 9                      # 활성 블록 없는 에이전트를 정렬 맨 뒤로 보내는 센티넬
 
 log = logging.getLogger("refuel")
@@ -343,14 +344,16 @@ def _weekly_ceiling(agent, dow, today):
 
 
 def _day_level(tokens, full):
-    """잔디 한 칸의 진하기. 0=안 씀, 1=썼음(연두), 2=한도까지 다 씀(초록).
+    """잔디 한 칸의 진하기. 0=안 씀, 1~5=사용량 비례(연두→초록).
 
-    full(5시간 한도 추정치)만큼 쓴 날 = 최소 한 번은 한도를 꽉 채운 날.
-    추정치가 아직 없으면(이력 부족) 진하기를 올리지 않고 1에 머문다.
+    full(5시간 한도 추정치)을 100%로 보고 5단계로 나눈다. 한도를 넘긴 날은 5.
+    추정치가 아직 없으면(이력 부족) 판단 근거가 없으니 1에 머문다.
     """
     if tokens <= 0:
         return 0
-    return 2 if (full and tokens >= full) else 1
+    if not full:
+        return 1
+    return min(GRASS_LEVELS, -(-tokens * GRASS_LEVELS // full))   # 올림 나눗셈
 
 
 def _streak(levels):
