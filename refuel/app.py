@@ -55,6 +55,7 @@ F = "Malgun Gothic"   # __init__에서 자동선택으로 덮어씀
 REFRESH_SECONDS = 20
 _WD = ["월", "화", "수", "목", "금", "토", "일"]
 _mutex_handle = None  # 단일 인스턴스 뮤텍스 참조 유지
+_WAKE_EVENT = "Refuel_ShowWindow_Event"   # 두 번째 실행 → 원래 창 띄우기 신호
 
 # ---------------- 선택 의존성 ----------------
 try:
@@ -101,6 +102,24 @@ def _single_instance():
         return windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
     except Exception:
         return True
+
+
+def _wake_running_instance():
+    """이미 떠 있는 인스턴스에 '창 띄워라' 신호를 보낸다. 성공하면 True.
+
+    두 번째로 실행했을 때 '이미 실행 중' 알림만 띄우면 정작 창을 보려면
+    트레이를 찾아 눌러야 한다. 그냥 원래 창을 띄워주는 게 사용자가 원한 동작이다.
+    """
+    try:
+        from ctypes import windll
+        h = windll.kernel32.OpenEventW(0x0002, False, _WAKE_EVENT)  # EVENT_MODIFY_STATE
+        if not h:
+            return False
+        windll.kernel32.SetEvent(h)
+        windll.kernel32.CloseHandle(h)
+        return True
+    except Exception:
+        return False
 
 
 def _pick_font(root):
@@ -481,6 +500,7 @@ class RefuelApp:
 
         threading.Thread(target=self._worker, daemon=True).start()
         threading.Thread(target=self._update_checker, daemon=True).start()
+        threading.Thread(target=self._watch_wake_signal, daemon=True).start()
         self._tick()
 
     def accent(self):
@@ -774,7 +794,32 @@ class RefuelApp:
             self._quit()
 
     def _show(self):
-        self.root.after(0, self.root.deiconify)
+        self.root.after(0, self._raise_window)
+
+    def _raise_window(self):
+        """숨겨져 있든 뒤에 있든 앞으로 끌어낸다."""
+        try:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+            self.root.attributes("-topmost", True)          # 확실히 앞으로
+            self.root.after(300, lambda: self.root.attributes("-topmost", False))
+        except Exception as e:
+            log.warning("창 띄우기 실패: %s", e)
+
+    def _watch_wake_signal(self):
+        """다른 인스턴스가 실행되면 창을 띄워달라는 신호를 기다린다(데몬 스레드)."""
+        try:
+            from ctypes import windll
+        except Exception:
+            return
+        h = windll.kernel32.CreateEventW(None, False, False, _WAKE_EVENT)
+        if not h:
+            return
+        while True:
+            if windll.kernel32.WaitForSingleObject(h, 0xFFFFFFFF) != 0:
+                return
+            self.root.after(0, self._raise_window)
 
     def _quit(self):
         if self.tray:
@@ -889,7 +934,9 @@ def main():
     core.setup_logging()
     _enable_dpi()
     if not _single_instance():
-        _notify("Refuel", "이미 실행 중이에요.", phone=False)   # PC 사정이라 폰까지 갈 일 아님
+        # 알림으로 알리는 대신 이미 떠 있는 창을 앞으로 띄운다.
+        if not _wake_running_instance():
+            _notify("Refuel", "이미 실행 중이에요.", phone=False)   # 신호 실패 시에만 안내
         return
     RefuelApp(start_hidden="--minimized" in sys.argv).run()
 
