@@ -295,6 +295,40 @@ async function scheduleLocalNotifs(agents,force){
   rlog('info','로컬 알림 '+notifs.length+'건 예약(대기 '+pend+'건) · 리셋 '+new Date(items[0].at).toLocaleString('ko-KR'));
  }catch(e){rlog('error','로컬 알림 예약 실패: '+(e&&e.message||e));}
 }
+// PC가 '지금' 보낸 알림(테스트·업데이트)을 앱이 켜져 있을 때 받아 띄운다.
+// 리셋 알림은 폰이 직접 예약해 울리므로(PC 꺼져도 도착) 여기선 건너뛴다 — 안 그러면 두 번 울린다.
+const ALERT_SEEN='rf_alert_seen', LIVE_TAG='refuel-live';
+async function showNow(title,body){
+ const LN=nativeLN();
+ if(LN){
+  try{if(!await ensurePerm())return; await ensureChannel();
+   await LN.schedule({notifications:[{id:1000+Math.floor(Math.random()*9000),title,body,
+     channelId:CH,schedule:{at:new Date(Date.now()+300)}}]});
+   rlog('info','PC 알림 표시: '+title);}
+  catch(e){rlog('error','PC 알림 표시 실패: '+(e&&e.message||e));}
+ }else if('Notification'in window&&Notification.permission==='granted'){
+  try{new Notification(title,{body})}catch(_){}
+ }
+}
+async function pollAlerts(){
+ if(!T||localStorage.rf_notif==='0')return;
+ try{
+  const res=await fetch(`${SV}/${encodeURIComponent(T)}-a/json?poll=1&since=15m`,{cache:'no-store'});
+  const lines=(await res.text()).trim().split('\n').filter(Boolean);
+  const seen=num(localStorage[ALERT_SEEN]), first=!seen;
+  let maxT=seen; const fresh=[];
+  for(const ln of lines){
+   let m;try{m=JSON.parse(ln)}catch(_){continue}
+   if(m.event!=='message')continue;
+   const t=num(m.time); if(t>maxT)maxT=t;
+   if(first||t<=seen)continue;                       // 첫 실행은 기준만 잡고 과거를 다시 울리지 않는다
+   if(!(m.tags||[]).includes(LIVE_TAG))continue;     // 예약 리셋 알림은 폰이 따로 울림
+   fresh.push(m);
+  }
+  if(maxT>seen)localStorage[ALERT_SEEN]=String(maxT);
+  for(const m of fresh)await showNow(m.title||'Refuel',m.message||'');
+ }catch(e){rlog('warn','PC 알림 확인 실패: '+(e&&e.message||e));}
+}
 async function testNotif(btn){
  const LN=nativeLN();
  if(LN){
@@ -368,6 +402,7 @@ async function poll(){
   if(state&&!pollState.ok){rlog('info','PC 상태 수신 성공(에이전트 '+(state.agents||[]).length+'개)');pollState.ok=true}
   render();
   if(state)scheduleLocalNotifs(state.agents);
+  pollAlerts();
   const age=state?Math.round((Date.now()/1000)-num(state.ts)):null;
   $('#meta').innerHTML=state?(age>1200?`<span class="stale">PC ${Math.round(age/60)}분 전 응답</span>`:`동기화 ${new Date(lastFetch).toLocaleTimeString('ko-KR')} 🔒`):'대기 중';
  }catch(e){$('#meta').textContent='연결 실패(오프라인?)';

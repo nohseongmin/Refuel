@@ -714,6 +714,8 @@ class RefuelApp:
         btns.pack(fill="x", pady=(18, 0))
         _btn(btns, "테스트 알림",
              lambda: _notify("Refuel 테스트", "알림이 잘 보이면 성공!")).pack(side="left", ipady=4, ipadx=8)
+        _lbl(win, "* 테스트 알림은 폰 연동이 켜져 있고 폰 앱이 실행 중이면 30초 안에 폰에도 뜬다.",
+             size=8, bg=BG, wraplength=380, justify="left").pack(anchor="w", pady=(6, 0))
 
         def save():
             try:

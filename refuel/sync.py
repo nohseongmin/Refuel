@@ -100,12 +100,20 @@ def _fire(payload):
     threading.Thread(target=run, daemon=True).start()
 
 
+LIVE_TAG = "refuel-live"   # '지금 보내는' 알림 표식. 폰 앱은 이것만 띄운다.
+
+
 def post_alert(title, msg):
-    """알림을 폰 푸시 토픽으로 (비동기)."""
+    """지금 발생한 알림을 폰 푸시 토픽으로 (비동기).
+
+    폰 앱은 이 토픽을 폴링해 LIVE_TAG가 붙은 것만 띄운다.
+    예약 발송(schedule_refill)에는 이 표식을 붙이지 않는다 — 리셋 알림은
+    폰이 스스로 예약해 울리므로, 여기까지 띄우면 두 번 울린다.
+    """
     if not enabled():
         return
     _fire({"topic": topic() + "-a", "title": title, "message": msg,
-           "priority": 4, "tags": ["zap"]})
+           "priority": 4, "tags": ["zap", LIVE_TAG]})
 
 
 SCHEDULE_TOL = 15 * 60   # 같은 리셋으로 간주하는 허용 오차(초). 재예약=중복 푸시 방지
