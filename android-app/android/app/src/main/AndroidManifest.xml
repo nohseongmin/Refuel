@@ -41,4 +41,8 @@
     <!-- QR 페어링 스캔용. 카메라는 스캔 순간에만 쓰고 아무것도 저장/전송하지 않음 -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- 리셋 시각에 정확히 알리기 위한 알람. 이게 없으면 안드로이드 12+에서
+         부정확 알람으로 강등돼 절전(Doze) 중 수십 분까지 밀린다.
+         사용자가 '알람 및 리마인더'에서 켜야 하며, 앱 설정에서 상태 확인/요청 가능. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 </manifest>

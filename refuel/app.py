@@ -41,7 +41,6 @@ def _latest_release_tag():
 # ---------------- 팔레트 ----------------
 BG = "#0d0f14"
 PANEL = "#141821"
-CARD = "#11151d"
 BORDER = "#252c3a"
 TRACK = "#0a0c11"
 TX = "#e7eaf0"

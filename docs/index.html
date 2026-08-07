@@ -25,10 +25,6 @@ padding:max(16px,env(safe-area-inset-top)) 16px 32px}
 .sub{font-size:11px;color:var(--mut);line-height:1.6}
 .bar{height:7px;background:var(--track);border-radius:5px;overflow:hidden;margin:10px 0 4px}
 .fill{height:100%;width:0%;background:var(--acc);transition:width .4s}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.mini{background:var(--card);border-radius:10px;padding:8px 12px}
-.mini .l{font-size:10px;color:var(--mut)}
-.mini .v{font-size:15px;font-weight:700;font-family:Consolas,monospace}
 .days{margin-top:10px}
 .drow{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:10px}
 .drow .dl{width:52px;color:var(--mut)}
@@ -272,6 +268,8 @@ async function ensurePerm(){
  try{let p=await LN.checkPermissions();if(p.display!=='granted'){p=await LN.requestPermissions();}return p.display==='granted';}
  catch(e){rlog('warn','알림 권한 확인 실패: '+e);return false;}
 }
+// 알림 id 대역: 100~999=리셋 예약(매번 다시 깔림), 1000+=단발 알림(PC 알림·테스트)
+const RESET_ID_MIN=100, RESET_ID_MAX=999;
 let lastSchedSig='';
 async function scheduleLocalNotifs(agents,force){
  const LN=nativeLN();if(!LN)return;
@@ -280,12 +278,15 @@ async function scheduleLocalNotifs(agents,force){
    .map(a=>({name:(a.name||''),at:num(a.block.reset)*1000}));
  const sig=(enabled?'1':'0')+'|'+(localStorage.rf_sound||'1')+(localStorage.rf_vibe||'1')+'|'+items.map(i=>i.name+i.at).join(',');
  if(!force&&sig===lastSchedSig)return; lastSchedSig=sig;
- try{const pend=await LN.getPending();if(pend.notifications&&pend.notifications.length)await LN.cancel({notifications:pend.notifications.map(n=>({id:n.id}))});}catch(_){}
+ // 리셋 예약만 걷어낸다. 단발 알림(1000+)까지 지우면 방금 띄우려던 PC 알림이 사라진다.
+ try{const pend=(await LN.getPending()).notifications||[];
+  const mine=pend.filter(n=>n.id>=RESET_ID_MIN&&n.id<=RESET_ID_MAX).map(n=>({id:n.id}));
+  if(mine.length)await LN.cancel({notifications:mine});}catch(_){}
  if(!enabled){rlog('info','알림 꺼짐 - 예약 안 함');return;}
  if(!items.length)return;
  if(!await ensurePerm()){rlog('warn','알림 권한 없음 - 예약 취소');return;}
  await ensureChannel();
- let id=100;
+ let id=RESET_ID_MIN;
  // allowWhileIdle: Doze(절전) 중에도 발화. 이게 빠지면 앱 닫힌 채 폰 잠들면 안 울린다.
  const notifs=items.map(i=>({id:id++,title:i.name+' 재충전 완료',body:'5시간 사용량 한도가 초기화되었습니다.',
    channelId:CH,schedule:{at:new Date(i.at),allowWhileIdle:true}}));
@@ -329,6 +330,42 @@ async function pollAlerts(){
   for(const m of fresh)await showNow(m.title||'Refuel',m.message||'');
  }catch(e){rlog('warn','PC 알림 확인 실패: '+(e&&e.message||e));}
 }
+// ---- 알림 진단 (리셋까지 5시간 기다리지 않고 지금 확인) ----
+async function exactAlarmState(){
+ const LN=nativeLN();if(!LN||!LN.checkExactNotificationSetting)return null;
+ try{return (await LN.checkExactNotificationSetting()).exact_alarm;}catch(e){return null;}
+}
+async function notifDiag(){
+ const LN=nativeLN();
+ if(!LN)return '네이티브 앱에서만 확인할 수 있습니다(지금은 웹).';
+ let perm='?',exact='?',pend=[];
+ try{perm=(await LN.checkPermissions()).display;}catch(_){}
+ exact=await exactAlarmState()||'?';
+ try{pend=(await LN.getPending()).notifications||[];}catch(_){}
+ const resets=pend.filter(n=>n.id>=RESET_ID_MIN&&n.id<=RESET_ID_MAX);
+ const when=resets.map(n=>{const t=n.schedule&&n.schedule.at;return t?new Date(t).toLocaleString('ko-KR'):'?';});
+ return [
+  '알림 권한: '+(perm==='granted'?'허용 ✅':perm+' ❌'),
+  '정확한 알람: '+(exact==='granted'?'허용 ✅':'꺼짐 ⚠ (알림이 수십 분 밀릴 수 있음)'),
+  '예약된 리셋 알림: '+resets.length+'건'+(when.length?' → '+when.join(', '):''),
+  '단발 알림 대기: '+(pend.length-resets.length)+'건'
+ ].join('\n');
+}
+async function selfTest(btn){
+ const LN=nativeLN();
+ if(!LN){alert('네이티브 앱에서만 됩니다.');return;}
+ if(!await ensurePerm()){alert('알림 권한이 필요합니다.');return;}
+ await ensureChannel();
+ const at=new Date(Date.now()+60000);
+ try{
+  // 리셋 알림과 '완전히 같은 방식'으로 1분 뒤에 건다 → 앱을 꺼도 오는지 1분이면 확인 가능
+  await LN.schedule({notifications:[{id:9999,title:'Refuel 예약 테스트',
+    body:'앱을 꺼둔 상태에서 이 알림이 왔다면 리셋 알림도 옵니다.',
+    channelId:CH,schedule:{at,allowWhileIdle:true}}]});
+  rlog('info','예약 테스트 1분 뒤: '+at.toLocaleTimeString('ko-KR'));
+  if(btn)btn.textContent='예약됨 · '+at.toLocaleTimeString('ko-KR')+' (앱을 완전히 끄세요)';
+ }catch(e){rlog('error','예약 테스트 실패: '+(e&&e.message||e));alert('실패: '+(e&&e.message||e));}
+}
 async function testNotif(btn){
  const LN=nativeLN();
  if(LN){
@@ -358,9 +395,14 @@ function openSettings(){
    <button id="s_scan" style="width:100%;margin-top:8px">📷 다시 스캔 (연결/변경)</button>
    ${PAIRED?'<button id="s_unpair" style="width:100%">연결 해제</button>':''}</div>
   <div class="setup"><b>알림</b>${toggleRow('알림 받기','rf_notif')}${toggleRow('소리','rf_sound')}${toggleRow('진동','rf_vibe')}
-   <button id="s_test" style="width:100%;margin-top:8px">테스트 알림</button>
-   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">폰이 리셋 시각에 직접 알림을 울립니다. PC가 꺼져 있어도 동작합니다.</span>
-   <span style="color:var(--warn);font-size:11px;display:block;margin-top:6px">⚠ 알림이 안 오면: 폰 <b>설정 → 애플리케이션 → Refuel → 배터리 → 제한 없음(허용)</b>으로 바꿔주세요. 삼성·샤오미 등은 절전 기능이 예약 알림을 꺼버립니다.</span></div>
+   <button id="s_test" style="width:100%;margin-top:8px">테스트 알림 (지금 바로)</button>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">폰이 리셋 시각에 직접 알림을 울립니다. PC가 꺼져 있어도 동작합니다.</span></div>
+  <div class="setup"><b>🔎 알림 진단</b>
+   <div id="diagbox" style="background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:11px;white-space:pre-wrap;line-height:1.6">확인 중…</div>
+   <button id="s_exact" style="width:100%;margin-top:8px;display:none">정확한 알람 허용하기</button>
+   <button id="s_selftest" style="width:100%">⏱ 1분 뒤 알림 예약 (앱 꺼도 오는지 확인)</button>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">리셋 알림과 <b>똑같은 방식</b>으로 겁니다. 예약 후 앱을 완전히 종료하고 1분만 기다려 보세요.</span>
+   <span style="color:var(--warn);font-size:11px;display:block;margin-top:6px">⚠ 안 오면: 폰 <b>설정 → 애플리케이션 → Refuel → 배터리 → 제한 없음</b>. 삼성·샤오미 등은 절전 기능이 예약 알림을 꺼버립니다.</span></div>
   <div class="setup"><b>🩺 진단 로그</b>
    <div id="logbox" style="max-height:150px;overflow:auto;background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:10px;font-family:Consolas,monospace;white-space:pre-wrap"></div>
    <button id="logshare">공유</button> <button id="logcopy">복사</button> <button id="logclear">지우기</button></div>
@@ -372,6 +414,20 @@ function openSettings(){
  const a1=$('#s_scan');if(a1)a1.onclick=startScan;
  const a2=$('#s_unpair');if(a2)a2.onclick=()=>{if(confirm('연결을 해제할까요? PC에서 다시 스캔해야 합니다.')){delete localStorage.rf_t;delete localStorage.rf_k;rlog('info','연결 해제');location.reload();}};
  const a3=$('#s_test');if(a3)a3.onclick=()=>testNotif(a3);
+ const refreshDiag=async()=>{
+  const box=$('#diagbox');if(!box)return;
+  box.textContent=await notifDiag();
+  const eb=$('#s_exact');
+  if(eb)eb.style.display=(await exactAlarmState())==='denied'?'block':'none';
+ };
+ refreshDiag();
+ const ex=$('#s_exact');if(ex)ex.onclick=async()=>{
+  const LN=nativeLN();if(!LN||!LN.changeExactNotificationSetting)return;
+  try{await LN.changeExactNotificationSetting();}catch(e){rlog('warn','정확 알람 설정 실패: '+e);}
+  if(state)await scheduleLocalNotifs(state.agents,true);   // 허용됐으면 정확 알람으로 다시 건다
+  refreshDiag();
+ };
+ const stb=$('#s_selftest');if(stb)stb.onclick=async()=>{await selfTest(stb);refreshDiag();};
  const a4=$('#s_demo');if(a4)a4.onclick=()=>{location.hash='demo';location.reload();};
  const cp=$('#cpbtn');if(cp)cp.onclick=()=>{navigator.clipboard.writeText(T+'-a');cp.textContent='복사됨!'};
  const lb=$('#logbox');if(lb)lb.textContent=logTail();
@@ -402,7 +458,6 @@ async function poll(){
   if(state&&!pollState.ok){rlog('info','PC 상태 수신 성공(에이전트 '+(state.agents||[]).length+'개)');pollState.ok=true}
   render();
   if(state)scheduleLocalNotifs(state.agents);
-  pollAlerts();
   const age=state?Math.round((Date.now()/1000)-num(state.ts)):null;
   $('#meta').innerHTML=state?(age>1200?`<span class="stale">PC ${Math.round(age/60)}분 전 응답</span>`:`동기화 ${new Date(lastFetch).toLocaleTimeString('ko-KR')} 🔒`):'대기 중';
  }catch(e){$('#meta').textContent='연결 실패(오프라인?)';
@@ -411,7 +466,12 @@ async function poll(){
 rlog('info','앱 시작 · '+(DEMO?'데모':PAIRED?'연동':'미연결'));
 {const g=$('#gear');if(g)g.onclick=openSettings;}
 if(DEMO){state=demoState();render();$('#meta').textContent='데모';setInterval(tickCount,1000);}
-else{render();poll();setInterval(poll,30000);setInterval(tickCount,1000);}
+else{
+ render();poll();setInterval(poll,30000);setInterval(tickCount,1000);
+ // 알림 폴링은 상태 폴링과 분리한다. 상태(-s)는 키가 있어야 복호화되고 실패하면 예외로
+ // 빠지는데, 거기 묶여 있으면 PC가 보낸 알림까지 같이 못 받는다.
+ pollAlerts();setInterval(pollAlerts,30000);
+}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 // AdMob 배너 — 네이티브 앱(Capacitor)일 때만. 웹에선 아무 것도 안 함(가드).
 document.addEventListener('DOMContentLoaded',async()=>{

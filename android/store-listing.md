@@ -42,6 +42,17 @@ Refuel은 AI 코딩 도구의 "연료 게이지"입니다.
 - 개인정보처리방침: https://nohseongmin.github.io/Refuel/privacy.html
 - 웹사이트: https://github.com/nohseongmin/Refuel
 
+## 권한 설명 (심사에서 물어볼 수 있음)
+| 권한 | 왜 필요한가 |
+|---|---|
+| INTERNET | 폰 연동(옵트인) 시 중계 서버에서 상태를 읽음 |
+| CAMERA | PC 화면의 페어링 QR 스캔 — 스캔 순간에만 쓰고 저장·전송 없음 |
+| POST_NOTIFICATIONS | 한도 초기화 알림 표시 |
+| SCHEDULE_EXACT_ALARM | **핵심 기능.** 한도가 풀리는 정확한 시각에 알려야 한다. 없으면 안드로이드 12+에서 부정확 알람으로 강등돼 수십 분 밀린다. 사용자가 '알람 및 리마인더'에서 끌 수 있고, 앱 설정에 상태 표시와 허용 버튼을 뒀다 |
+| RECEIVE_BOOT_COMPLETED / WAKE_LOCK | 재부팅 후 예약 알림 복원(알림 플러그인이 요구) |
+| AD_ID 계열 | AdMob 배너 |
+※ USE_EXACT_ALARM은 쓰지 않는다(알람시계·캘린더 전용 권한이라 심사에서 반려 위험).
+
 ## ⚠️ AdMob 광고 도입에 따른 변경 (중요)
 광고를 넣으면 아래가 **반드시** 바뀐다. 안 바꾸면 정책 위반이다.
 - **광고 포함 여부**: "이 앱에 광고가 포함되어 있나요?" → **예**

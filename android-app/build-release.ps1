@@ -73,7 +73,12 @@ $checks = @{
     "데모 모드"       = $html.Contains("demoState")
     "앱 내 QR 스캐너" = $html.Contains("function startScan")
     "잔디/연속기록"   = $html.Contains("function grassHTML")
+    "알림 진단/자체테스트" = $html.Contains("function selfTest")
+    "PC 알림 수신"    = $html.Contains("function pollAlerts")
 }
+# 정확 알람 권한이 빠지면 안드로이드 12+에서 리셋 알림이 조용히 밀린다 → 빌드 단계에서 막는다
+$perm = & "$BT\aapt2.exe" dump badging "Refuel-admob.apk" 2>$null | Select-String "SCHEDULE_EXACT_ALARM"
+$checks["정확 알람 권한"] = [bool]$perm
 $fail = $false
 foreach ($k in $checks.Keys) {
     if ($checks[$k]) { Write-Host "  OK   $k" -ForegroundColor Green }
