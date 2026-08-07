@@ -889,7 +889,7 @@ def main():
     core.setup_logging()
     _enable_dpi()
     if not _single_instance():
-        _notify("Refuel", "이미 실행 중이에요.")
+        _notify("Refuel", "이미 실행 중이에요.", phone=False)   # PC 사정이라 폰까지 갈 일 아님
         return
     RefuelApp(start_hidden="--minimized" in sys.argv).run()
 

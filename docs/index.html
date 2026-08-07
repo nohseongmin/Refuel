@@ -256,12 +256,17 @@ function render(){
 // ---- 로컬 알림 (폰이 직접 예약 → PC 꺼져도 리셋 시각에 울림, ntfy 앱 불필요) ----
 const CH='refuel_reset';
 function nativeLN(){const C=window.Capacitor;return (C&&C.isNativePlatform&&C.isNativePlatform()&&C.Plugins&&C.Plugins.LocalNotifications)?C.Plugins.LocalNotifications:null;}
+// 채널은 소리/진동 설정이 바뀔 때만 다시 만든다. 채널을 지우면 그 채널로 이미 떠 있던
+// 알림까지 사라지므로, 매번 지웠다 만들면 보고 있던 리셋 알림이 지워질 수 있다.
+let chanSig='';
 async function ensureChannel(){
  const LN=nativeLN();if(!LN)return;
  const sound=localStorage.rf_sound!=='0', vibe=localStorage.rf_vibe!=='0';
+ const sig=(sound?'1':'0')+(vibe?'1':'0');
+ if(sig===chanSig)return; chanSig=sig;
  try{await LN.deleteChannel({id:CH})}catch(_){}
  try{await LN.createChannel({id:CH,name:'재충전 알림',description:'토큰 한도 초기화',importance:sound?5:2,vibration:vibe,visibility:1,lights:true,lightColor:'#46e08a'});}
- catch(e){rlog('warn','채널 생성 실패: '+e)}
+ catch(e){chanSig='';rlog('warn','채널 생성 실패: '+e)}
 }
 async function ensurePerm(){
  const LN=nativeLN();if(!LN)return false;
@@ -299,11 +304,12 @@ async function scheduleLocalNotifs(agents,force){
 // PC가 '지금' 보낸 알림(테스트·업데이트)을 앱이 켜져 있을 때 받아 띄운다.
 // 리셋 알림은 폰이 직접 예약해 울리므로(PC 꺼져도 도착) 여기선 건너뛴다 — 안 그러면 두 번 울린다.
 const ALERT_SEEN='rf_alert_seen', LIVE_TAG='refuel-live';
+const alertState={ok:null};   // 실패 로그 스팸 방지(상태가 바뀔 때만 기록)
 async function showNow(title,body){
  const LN=nativeLN();
  if(LN){
   try{if(!await ensurePerm())return; await ensureChannel();
-   await LN.schedule({notifications:[{id:1000+Math.floor(Math.random()*9000),title,body,
+   await LN.schedule({notifications:[{id:1000+Math.floor(Math.random()*8000),title,body,
      channelId:CH,schedule:{at:new Date(Date.now()+300)}}]});
    rlog('info','PC 알림 표시: '+title);}
   catch(e){rlog('error','PC 알림 표시 실패: '+(e&&e.message||e));}
@@ -327,8 +333,11 @@ async function pollAlerts(){
    fresh.push(m);
   }
   if(maxT>seen)localStorage[ALERT_SEEN]=String(maxT);
+  alertState.ok=true;
   for(const m of fresh)await showNow(m.title||'Refuel',m.message||'');
- }catch(e){rlog('warn','PC 알림 확인 실패: '+(e&&e.message||e));}
+ }catch(e){   // 오프라인이면 30초마다 쌓여 진단 로그를 밀어내므로 상태가 바뀔 때만 기록
+  if(alertState.ok!==false){rlog('warn','PC 알림 확인 실패: '+(e&&e.message||e));alertState.ok=false;}
+ }
 }
 // ---- 알림 진단 (리셋까지 5시간 기다리지 않고 지금 확인) ----
 async function exactAlarmState(){
