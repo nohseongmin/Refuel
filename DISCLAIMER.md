@@ -1,23 +1,42 @@
-# 면책조항 (Disclaimer)
+# Disclaimer
 
-Refuel을 설치·사용하면 아래 내용에 동의하는 것으로 간주합니다.
-(PC 앱은 최초 실행 시 동의 체크박스로 명시적 동의를 받습니다.)
+By installing or using Refuel you accept the terms below.
+(The Windows app also asks you to tick an explicit agreement box on first launch.)
 
-## 1. 비공식 도구
-Refuel은 비공식 도구이며 Anthropic, OpenAI, Cursor, GitHub 등 어떤 회사와도 제휴·후원·인증 관계가 없습니다. 모든 상표는 각 소유자의 것입니다.
+## 1. Unofficial tool
 
-## 2. 추정치 고지
-표시되는 토큰 한도, 리셋 시각, 소진 예측, 주간 추정치는 사용자 PC의 로컬 로그를 바탕으로 계산한 **추정치**입니다. 실제 제공사의 값과 다를 수 있으며, 정확성·완전성을 보장하지 않습니다. 참고용으로만 사용하세요.
+Refuel is an unofficial tool. It is not affiliated with, sponsored by, or endorsed by Anthropic, OpenAI, Cursor, GitHub, or any other company. All trademarks belong to their respective owners.
 
-## 3. 데이터 처리 (폰 연동)
-- 폰 연동은 **기본 꺼짐(옵트인)** 이며 사용자가 켠 경우에만 동작합니다.
-- 전송되는 것: **토큰 사용량 수치·시각·에이전트 이름뿐**입니다. 코드, 대화 내용, 프롬프트, API 키는 전송되지 않습니다.
-- 상태 데이터는 **AES-GCM으로 종단간 암호화**되어 중계 서비스(ntfy)를 거쳐 본인 기기로만 전달됩니다. 개발자는 복호화 키가 없어 데이터에 접근할 수 없습니다.
-- 알림 문구는 표시를 위해 평문으로 전달되나, 서버에 예약·보관되는 메시지는 수치 없는 일반 알림("재충전 완료" 등)뿐입니다.
-- 폰 연동은 언제든 끌 수 있고, 설정에서 토픽·키를 재발급하면 기존 연결이 즉시 무효화됩니다.
+## 2. Everything shown is an estimate
 
-## 4. 무보증
-이 소프트웨어는 명시적·묵시적 보증 없이 **"있는 그대로(AS IS)"** 제공됩니다. 사용으로 인해 발생하는 직접·간접적 결과(작업 손실, 한도 오판단 등)에 대한 책임은 **사용자 본인**에게 있으며, 개발자는 책임을 지지 않습니다.
+Token limits, reset times and weekly figures are **estimates** calculated from log files on your own machine. Providers do not publish exact token quotas, so these numbers can differ from the real ones. Accuracy and completeness are not guaranteed — treat them as a rough guide, not as a billing record.
 
-## 5. 오픈소스
-전체 소스코드가 공개되어 있어 위 내용을 직접 검증할 수 있습니다: https://github.com/nohseongmin/Refuel
+## 3. Data handling (phone sync)
+
+- Phone sync is **off by default (opt-in)** and runs only if you turn it on.
+- What is sent: **token counts, timestamps and agent names only.** Your code, conversations, prompts and API keys are never sent.
+- Status data is **end-to-end encrypted with AES-GCM** and relayed to your own device through ntfy. The developer holds no decryption key and cannot read it.
+- Alert text is relayed in plaintext so it can be displayed, but the messages queued on the server contain no figures — only generic notices such as "refueled".
+- You can turn phone sync off at any time. Regenerating the topic and key in settings immediately invalidates any existing pairing.
+
+## 4. No warranty
+
+This software is provided **"AS IS"**, without warranty of any kind, express or implied. You are solely responsible for any consequences of using it, direct or indirect — including lost work or decisions made on a misread limit. The developer accepts no liability.
+
+## 5. Third-party services
+
+- **ntfy.sh** is used as the relay when phone sync is on. Its availability and policies are outside the developer's control.
+- **GitHub** is contacted once a day to check for new releases (read-only). This can be turned off in settings.
+
+## 6. Your responsibility
+
+Refuel reads local log files. Make sure you have the right to read the logs on the machine you run it on, and comply with the terms of service of the AI provider you use.
+
+## 7. Changes
+
+These terms may change with future versions. When the text changes materially, the app asks for your agreement again on the next launch.
+
+---
+
+Full source code: <https://github.com/nohseongmin/Refuel>
+Licensed under the [MIT License](LICENSE).

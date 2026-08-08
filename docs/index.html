@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head>
+<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Refuel</title>
 <link rel="manifest" href="manifest.json">
@@ -14,7 +14,7 @@
 /* 잔디 5단계(연두→초록) — 사용량이 5시간 한도 추정치의 몇 %인지에 비례 */
 --g0:#161b26;--g1:#d9f99d;--g2:#a3e635;--g3:#65d64f;--g4:#3aba48;--g5:#1a9c3c}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:var(--bg);color:var(--tx);font-family:'Malgun Gothic',system-ui,sans-serif;
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
 padding:max(16px,env(safe-area-inset-top)) 16px 32px}
 .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .brand{font-weight:700;font-size:17px;color:var(--acc)}
@@ -51,7 +51,7 @@ padding:8px 14px;font-size:12px;margin-top:8px}
 a{color:var(--blu)}
 .stale{color:var(--warn)}
 </style></head><body>
-<div class="top"><div class="brand">● Refuel</div><div style="display:flex;align-items:center;gap:10px"><div class="meta" id="meta">--</div><button id="gear" title="설정" style="background:none;border:0;color:var(--mut);font-size:20px;cursor:pointer;padding:2px 4px;line-height:1">⚙</button></div></div>
+<div class="top"><div class="brand">● Refuel</div><div style="display:flex;align-items:center;gap:10px"><div class="meta" id="meta">--</div><button id="gear" title="Settings" style="background:none;border:0;color:var(--mut);font-size:20px;cursor:pointer;padding:2px 4px;line-height:1">⚙</button></div></div>
 <div id="root"></div>
 <script src="jsqr.min.js"></script>
 <script>
@@ -125,55 +125,55 @@ function rlog(level,msg){
  const b=$('#logbox');if(b)b.textContent=logTail();
 }
 function logTail(n=40){
- return LOG.slice(-n).map(e=>`[${e.t.slice(11,19)}] ${e.l[0].toUpperCase()} ${e.m}`).join('\n')||'(기록 없음)';
+ return LOG.slice(-n).map(e=>`[${e.t.slice(11,19)}] ${e.l[0].toUpperCase()} ${e.m}`).join('\n')||'(no entries)';
 }
 function logReport(){
  const Cap=window.Capacitor, native=!!(Cap&&Cap.isNativePlatform&&Cap.isNativePlatform());
- return ['Refuel 진단 로그',
-  '생성: '+new Date().toLocaleString('ko-KR'),
-  '실행: '+(native?'네이티브 앱':'웹')+' / 모드: '+(DEMO?'데모':'연동'),
-  '페어링: '+(T?'있음':'없음')+' · 키: '+(K?'있음':'없음')+' · 릴레이: '+SV,
+ return ['Refuel diagnostic log',
+  'Generated: '+new Date().toLocaleString(),
+  'Runtime: '+(native?'native app':'web')+' / mode: '+(DEMO?'demo':'live'),
+  'Paired: '+(T?'yes':'no')+' · key: '+(K?'yes':'no')+' · relay: '+SV,
   'UA: '+navigator.userAgent,
-  '항목 수: '+LOG.length,
+  'Entries: '+LOG.length,
   '─────────────────────────',
   LOG.map(e=>`[${e.t.slice(0,19).replace('T',' ')}] ${e.l.toUpperCase()} ${e.m}`).join('\n')
  ].join('\n');
 }
 window.addEventListener('error',e=>rlog('error','uncaught: '+(e.message||'')+' @'+(e.filename||'').split('/').pop()+':'+(e.lineno||'')));
 window.addEventListener('unhandledrejection',e=>rlog('error','unhandled: '+((e.reason&&e.reason.message)||e.reason)));
-if(P.get('t'))rlog('info','QR 페어링 저장됨');
+if(P.get('t'))rlog('info','QR pairing saved');
 
 // ---- 앱 내 QR 스캐너 (ntfy 앱 없이 바로 페어링) ----
 function applyPairing(text){
  const i=String(text).indexOf('#');
  const p=new URLSearchParams(i>=0?text.slice(i+1):'');
- if(!p.get('t')){rlog('warn','QR에 페어링 정보 없음');alert('Refuel 페어링 QR이 아닙니다.');return false;}
+ if(!p.get('t')){rlog('warn','QR has no pairing info');alert('That is not a Refuel pairing QR.');return false;}
  localStorage.rf_t=p.get('t');
  if(p.get('k'))localStorage.rf_k=p.get('k');
  if(p.get('sv'))localStorage.rf_sv=p.get('sv');
- rlog('info','페어링 완료 - 재시작');
+ rlog('info','paired - reloading');
  location.reload();
  return true;
 }
 async function startScan(){
- if(typeof jsQR!=='function'){rlog('error','QR 디코더 로드 안 됨');alert('스캐너를 불러오지 못했습니다.');return;}
- rlog('info','QR 스캔 시작');
+ if(typeof jsQR!=='function'){rlog('error','QR decoder not loaded');alert('Could not load the scanner.');return;}
+ rlog('info','QR scan started');
  let stream;
  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});}
- catch(e){rlog('error','카메라 접근 실패: '+(e&&e.message||e));alert('카메라를 열 수 없습니다. 앱 설정에서 카메라 권한을 허용해 주세요.');return;}
+ catch(e){rlog('error','camera access failed: '+(e&&e.message||e));alert('Could not open the camera. Allow camera access in the app settings.');return;}
  const ov=document.createElement('div');
  ov.style.cssText='position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px';
  const v=document.createElement('video');v.setAttribute('playsinline','');v.muted=true;
  v.style.cssText='width:88%;max-width:420px;border-radius:16px';v.srcObject=stream;
- const hint=document.createElement('div');hint.textContent='PC 화면의 QR을 비추세요';
+ const hint=document.createElement('div');hint.textContent='Point at the QR on your PC screen';
  hint.style.cssText='color:#e7eaf0;font-size:15px';
- const cancel=document.createElement('button');cancel.textContent='취소';
+ const cancel=document.createElement('button');cancel.textContent='Cancel';
  cancel.style.cssText='background:#141821;color:#e7eaf0;border:1px solid #252c3a;border-radius:10px;padding:10px 22px;font-size:14px';
  ov.append(hint,v,cancel);document.body.append(ov);
  const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});
  let stop=false;
  const close=()=>{stop=true;stream.getTracks().forEach(t=>t.stop());ov.remove();};
- cancel.onclick=()=>{rlog('info','QR 스캔 취소');close();};
+ cancel.onclick=()=>{rlog('info','QR scan cancelled');close();};
  try{await v.play();}catch(_){}
  (function tick(){
   if(stop)return;
@@ -181,18 +181,18 @@ async function startScan(){
    cv.width=v.videoWidth;cv.height=v.videoHeight;
    cx.drawImage(v,0,0,cv.width,cv.height);
    let code=null;try{const im=cx.getImageData(0,0,cv.width,cv.height);code=jsQR(im.data,im.width,im.height);}catch(_){}
-   if(code&&code.data){rlog('info','QR 인식됨');close();applyPairing(code.data);return;}
+   if(code&&code.data){rlog('info','QR recognised');close();applyPairing(code.data);return;}
   }
   requestAnimationFrame(tick);
  })();
 }
 const fmtN=v=>num(v).toLocaleString('en-US');
 const fmtS=v=>{v=num(v);return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?Math.round(v/1e3)+'K':''+v};
-const WD=['월','화','수','목','금','토','일'];
+const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const WINDOW_SEC=18000, WEEK_SEC=7*86400; // 5시간 윈도우·주간 윈도우(초) — PC측 core.py와 동일
 function dur(s){if(s==null)return'--:--:--';s=Math.max(0,Math.floor(s));
  const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=s%60;
- const b=[h,m,x].map(v=>String(v).padStart(2,'0')).join(':');return d?d+'일 '+b:b}
+ const b=[h,m,x].map(v=>String(v).padStart(2,'0')).join(':');return d?d+'d '+b:b}
 async function getKey(){
  if(cryptoKey||!K)return cryptoKey;
  const raw=new Uint8Array(K.match(/.{2}/g).map(h=>parseInt(h,16)));
@@ -216,17 +216,17 @@ function grassHTML(st){
  for(const c of lv)cells+=`<i class="l${Math.min(5,Math.max(0,Number(c)||0))}"></i>`;
  const cur=num(st.current), best=num(st.best);
  const sw=[1,2,3,4,5].map(i=>`<b style="background:var(--g${i})"></b>`).join('');
- return `<div class="streak">${cur?`🔥 <span>${cur}일 연속 사용</span>`:'<span class="off">연속 기록 없음</span>'}
-   <span class="off">· 최고 ${best}일</span></div>
+ return `<div class="streak">${cur?`🔥 <span>${cur} day streak</span>`:'<span class="off">No active streak</span>'}
+   <span class="off">· best ${best}</span></div>
   <div class="grass">${cells}</div>
-  <div class="legend">적음${sw}많음 · 진할수록 한도까지 사용</div>`;
+  <div class="legend">Less${sw}More · brighter = closer to the limit</div>`;
 }
 function agentCardsHTML(agents){
  const now=Date.now()/1000;
- if(!agents.length)return `<div class="setup">감지된 에이전트가 없습니다. PC에서 AI 도구를 사용하면 표시됩니다.</div>`;
+ if(!agents.length)return `<div class="setup">No agents detected yet. Use an AI tool on your PC and it will show up here.</div>`;
  return agents.map(a=>{
   const name=esc(a.name||a.id||'?');
-  let count='충전완료',col='var(--acc)',prog=0,ratio=null,sub='활성 윈도우 없음 · 바로 사용 가능';
+  let count='Refueled',col='var(--acc)',prog=0,ratio=null,sub='No active window · ready to go';
   const bReset=a.block?num(a.block.reset):0, wkReset=(a.wk&&a.wk.reset)?num(a.wk.reset):0;
   const wkRatio=(a.wk&&a.wk.ratio!=null)?num(a.wk.ratio):null;
   if(a.block&&bReset>now){
@@ -234,14 +234,14 @@ function agentCardsHTML(agents){
    col=(ratio!=null&&ratio>=0.8)?'var(--dng)':(rem<=1800?'var(--warn)':'var(--acc)');
    count=dur(rem);prog=Math.min(1,(WINDOW_SEC-rem)/WINDOW_SEC);
    const t=new Date(bReset*1000);
-   sub=`5시간 리셋 ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')} · 윈도우 ${fmtN(a.block.tok)} 토큰`+(ratio!=null?` · 추정 ${Math.round(ratio*100)}%`:'');
+   sub=`5h reset ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')} · window ${fmtN(a.block.tok)} tokens`+(ratio!=null?` · est. ${Math.round(ratio*100)}%`:'');
   }else if(wkRatio!=null&&wkRatio>=0.8&&wkReset>now){
    const rem=wkReset-now;col='var(--dng)';count=dur(rem);prog=1-rem/WEEK_SEC;
-   sub='주간 한도 도달 - 풀릴 때까지 대기';
+   sub='Weekly limit reached - waiting for reset';
   }
   let wkline='';
   if(wkReset){const wd=new Date(wkReset*1000);
-   wkline=`주간 ${fmtN(a.week)} 토큰 · 리셋 ${WD[(wd.getDay()+6)%7]} ${String(wd.getHours()).padStart(2,'0')}:${String(wd.getMinutes()).padStart(2,'0')}`+(wkRatio!=null?` · 추정 ${Math.round(wkRatio*100)}%`:'');}
+   wkline=`Weekly ${fmtN(a.week)} tokens · resets ${WD[(wd.getDay()+6)%7]} ${String(wd.getHours()).padStart(2,'0')}:${String(wd.getMinutes()).padStart(2,'0')}`+(wkRatio!=null?` · est. ${Math.round(wkRatio*100)}%`:'');}
   const daily=(Array.isArray(a.daily)?a.daily:[]).map(d=>[String(d[0]),num(d[1])]);
   const mx=Math.max(...daily.map(d=>d[1]),1);
   const days=daily.slice().reverse().map(d=>{
@@ -253,19 +253,19 @@ function agentCardsHTML(agents){
    <div class="count" style="color:${col}" data-reset="${a.block?bReset:''}">${count}</div>
    ${grassHTML(a.streak)}
    <div class="sub">${sub}</div><div class="bar"><div class="fill" style="width:${(prog*100).toFixed(1)}%;background:${col}"></div></div>
-   <div class="sub">오늘 ${fmtN(a.today)} 토큰</div>
+   <div class="sub">Today ${fmtN(a.today)} tokens</div>
    <div class="sub">${wkline}</div>
    <div class="days">${days}</div></div>`}).join('');
 }
 function connectHTML(){
- return `<div class="setup"><b>PC와 연결하세요</b><br>
-   토큰 사용량을 보려면 PC의 Refuel과 한 번만 연결하면 됩니다.<br><br>
-   1) PC에 <a href="https://github.com/nohseongmin/Refuel/releases/latest" target="_blank" rel="noopener noreferrer">Refuel 데스크톱</a> 설치·실행<br>
-   2) PC 우측 상단 ⚙ → <b>QR 페어링</b><br>
-   3) 아래 버튼으로 그 QR을 스캔<br>
-   <button id="scanbtn" style="background:var(--acc);color:#0d0f14;border:0;font-weight:700;padding:14px;font-size:15px;width:100%;margin-top:8px">📷 QR 스캔해서 연결</button>
-   <button id="demobtn" style="width:100%">앱 미리보기 (데모)</button>
-   <span style="color:var(--mut);font-size:11px;display:block;margin-top:8px">사용 시 <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">면책조항</a>에 동의한 것으로 간주됩니다.</span></div>`;
+ return `<div class="setup"><b>Connect to your PC</b><br>
+   Pair once with Refuel on your PC to see your token usage.<br><br>
+   1) Install and run <a href="https://github.com/nohseongmin/Refuel/releases/latest" target="_blank" rel="noopener noreferrer">Refuel for Windows</a><br>
+   2) On the PC, click ⚙ (top right) → <b>Pair with QR</b><br>
+   3) Scan that QR with the button below<br>
+   <button id="scanbtn" style="background:var(--acc);color:#0d0f14;border:0;font-weight:700;padding:14px;font-size:15px;width:100%;margin-top:8px">📷 Scan QR to connect</button>
+   <button id="demobtn" style="width:100%">Preview the app (demo)</button>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:8px">By using this app you agree to the <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">disclaimer</a>.</span></div>`;
 }
 function wireCommon(){
  const sc=$('#scanbtn');if(sc)sc.onclick=startScan;
@@ -275,12 +275,12 @@ function render(){
  const r=$('#root');
  if(DEMO){
   r.innerHTML=agentCardsHTML(Array.isArray(state&&state.agents)?state.agents:[])
-   +`<div class="setup"><b>🎬 데모 · 샘플 데이터</b><br>실제 데이터를 보려면 PC와 연결하세요.
-     <button id="scanbtn" style="width:100%;margin-top:6px">📷 QR 스캔해서 연결</button></div>`;
+   +`<div class="setup"><b>🎬 Demo · sample data</b><br>Connect to your PC to see real data.
+     <button id="scanbtn" style="width:100%;margin-top:6px">📷 Scan QR to connect</button></div>`;
   wireCommon();return;
  }
- if(!PAIRED){$('#meta').textContent='미연결';r.innerHTML=connectHTML();wireCommon();return;}
- if(!state){r.innerHTML=`<div class="setup"><b>데이터 기다리는 중…</b><br>PC의 Refuel이 켜져 있고 ⚙에서 <b>폰 연동</b>이 켜져 있는지 확인하세요.</div>`;return;}
+ if(!PAIRED){$('#meta').textContent='Not connected';r.innerHTML=connectHTML();wireCommon();return;}
+ if(!state){r.innerHTML=`<div class="setup"><b>Waiting for data…</b><br>Make sure Refuel is running on your PC and <b>Phone sync</b> is on in ⚙.</div>`;return;}
  r.innerHTML=agentCardsHTML(Array.isArray(state.agents)?state.agents:[]);
 }
 
@@ -296,13 +296,13 @@ async function ensureChannel(){
  const sig=(sound?'1':'0')+(vibe?'1':'0');
  if(sig===chanSig)return; chanSig=sig;
  try{await LN.deleteChannel({id:CH})}catch(_){}
- try{await LN.createChannel({id:CH,name:'재충전 알림',description:'토큰 한도 초기화',importance:sound?5:2,vibration:vibe,visibility:1,lights:true,lightColor:'#46e08a'});}
- catch(e){chanSig='';rlog('warn','채널 생성 실패: '+e)}
+ try{await LN.createChannel({id:CH,name:'Refuel alerts',description:'Token limit reset',importance:sound?5:2,vibration:vibe,visibility:1,lights:true,lightColor:'#46e08a'});}
+ catch(e){chanSig='';rlog('warn','channel creation failed: '+e)}
 }
 async function ensurePerm(){
  const LN=nativeLN();if(!LN)return false;
  try{let p=await LN.checkPermissions();if(p.display!=='granted'){p=await LN.requestPermissions();}return p.display==='granted';}
- catch(e){rlog('warn','알림 권한 확인 실패: '+e);return false;}
+ catch(e){rlog('warn','permission check failed: '+e);return false;}
 }
 // 알림 id 대역: 100~999=리셋 예약(매번 다시 깔림), 1000+=단발 알림(PC 알림·테스트)
 const RESET_ID_MIN=100, RESET_ID_MAX=999;
@@ -318,19 +318,19 @@ async function scheduleLocalNotifs(agents,force){
  try{const pend=(await LN.getPending()).notifications||[];
   const mine=pend.filter(n=>n.id>=RESET_ID_MIN&&n.id<=RESET_ID_MAX).map(n=>({id:n.id}));
   if(mine.length)await LN.cancel({notifications:mine});}catch(_){}
- if(!enabled){rlog('info','알림 꺼짐 - 예약 안 함');return;}
+ if(!enabled){rlog('info','alerts off - nothing scheduled');return;}
  if(!items.length)return;
- if(!await ensurePerm()){rlog('warn','알림 권한 없음 - 예약 취소');return;}
+ if(!await ensurePerm()){rlog('warn','no notification permission - scheduling cancelled');return;}
  await ensureChannel();
  let id=RESET_ID_MIN;
  // allowWhileIdle: Doze(절전) 중에도 발화. 이게 빠지면 앱 닫힌 채 폰 잠들면 안 울린다.
- const notifs=items.map(i=>({id:id++,title:i.name+' 재충전 완료',body:'5시간 사용량 한도가 초기화되었습니다.',
+ const notifs=items.map(i=>({id:id++,title:i.name+' refueled',body:'Your 5-hour usage limit has reset.',
    channelId:CH,schedule:{at:new Date(i.at),allowWhileIdle:true}}));
  try{
   await LN.schedule({notifications:notifs});
   let pend=0;try{pend=((await LN.getPending()).notifications||[]).length;}catch(_){}
-  rlog('info','로컬 알림 '+notifs.length+'건 예약(대기 '+pend+'건) · 리셋 '+new Date(items[0].at).toLocaleString('ko-KR'));
- }catch(e){rlog('error','로컬 알림 예약 실패: '+(e&&e.message||e));}
+  rlog('info','scheduled '+notifs.length+' local alert(s) ('+pend+' pending) · reset '+new Date(items[0].at).toLocaleString());
+ }catch(e){rlog('error','local alert scheduling failed: '+(e&&e.message||e));}
 }
 // PC가 '지금' 보낸 알림(테스트·업데이트)을 앱이 켜져 있을 때 받아 띄운다.
 // 리셋 알림은 폰이 직접 예약해 울리므로(PC 꺼져도 도착) 여기선 건너뛴다 — 안 그러면 두 번 울린다.
@@ -342,8 +342,8 @@ async function showNow(title,body){
   try{if(!await ensurePerm())return; await ensureChannel();
    await LN.schedule({notifications:[{id:1000+Math.floor(Math.random()*8000),title,body,
      channelId:CH,schedule:{at:new Date(Date.now()+300)}}]});
-   rlog('info','PC 알림 표시: '+title);}
-  catch(e){rlog('error','PC 알림 표시 실패: '+(e&&e.message||e));}
+   rlog('info','showing PC alert: '+title);}
+  catch(e){rlog('error','failed to show PC alert: '+(e&&e.message||e));}
  }else if('Notification'in window&&Notification.permission==='granted'){
   try{new Notification(title,{body})}catch(_){}
  }
@@ -367,7 +367,7 @@ async function pollAlerts(){
   alertState.ok=true;
   for(const m of fresh)await showNow(m.title||'Refuel',m.message||'');
  }catch(e){   // 오프라인이면 30초마다 쌓여 진단 로그를 밀어내므로 상태가 바뀔 때만 기록
-  if(alertState.ok!==false){rlog('warn','PC 알림 확인 실패: '+(e&&e.message||e));alertState.ok=false;}
+  if(alertState.ok!==false){rlog('warn','PC alert check failed: '+(e&&e.message||e));alertState.ok=false;}
  }
 }
 // ---- 알림 진단 (리셋까지 5시간 기다리지 않고 지금 확인) ----
@@ -377,47 +377,47 @@ async function exactAlarmState(){
 }
 async function notifDiag(){
  const LN=nativeLN();
- if(!LN)return '네이티브 앱에서만 확인할 수 있습니다(지금은 웹).';
+ if(!LN)return 'Only available in the native app (currently running on web).';
  let perm='?',exact='?',pend=[];
  try{perm=(await LN.checkPermissions()).display;}catch(_){}
  exact=await exactAlarmState()||'?';
  try{pend=(await LN.getPending()).notifications||[];}catch(_){}
  const resets=pend.filter(n=>n.id>=RESET_ID_MIN&&n.id<=RESET_ID_MAX);
- const when=resets.map(n=>{const t=n.schedule&&n.schedule.at;return t?new Date(t).toLocaleString('ko-KR'):'?';});
+ const when=resets.map(n=>{const t=n.schedule&&n.schedule.at;return t?new Date(t).toLocaleString():'?';});
  return [
-  '알림 권한: '+(perm==='granted'?'허용 ✅':perm+' ❌'),
-  '정확한 알람: '+(exact==='granted'?'허용 ✅':'꺼짐 ⚠ (알림이 수십 분 밀릴 수 있음)'),
-  '예약된 리셋 알림: '+resets.length+'건'+(when.length?' → '+when.join(', '):''),
-  '단발 알림 대기: '+(pend.length-resets.length)+'건'
+  'Notifications: '+(perm==='granted'?'allowed ✅':perm+' ❌'),
+  'Exact alarms: '+(exact==='granted'?'allowed ✅':'off ⚠ (alerts can be delayed by tens of minutes)'),
+  'Scheduled reset alerts: '+resets.length+(when.length?' → '+when.join(', '):''),
+  'One-off alerts pending: '+(pend.length-resets.length)
  ].join('\n');
 }
 async function selfTest(btn){
  const LN=nativeLN();
- if(!LN){alert('네이티브 앱에서만 됩니다.');return;}
- if(!await ensurePerm()){alert('알림 권한이 필요합니다.');return;}
+ if(!LN){alert('Only available in the native app.');return;}
+ if(!await ensurePerm()){alert('Notification permission is required.');return;}
  await ensureChannel();
  const at=new Date(Date.now()+60000);
  try{
   // 리셋 알림과 '완전히 같은 방식'으로 1분 뒤에 건다 → 앱을 꺼도 오는지 1분이면 확인 가능
-  await LN.schedule({notifications:[{id:9999,title:'Refuel 예약 테스트',
-    body:'앱을 꺼둔 상태에서 이 알림이 왔다면 리셋 알림도 옵니다.',
+  await LN.schedule({notifications:[{id:9999,title:'Refuel scheduled test',
+    body:'If this arrived with the app closed, reset alerts will arrive too.',
     channelId:CH,schedule:{at,allowWhileIdle:true}}]});
-  rlog('info','예약 테스트 1분 뒤: '+at.toLocaleTimeString('ko-KR'));
-  if(btn)btn.textContent='예약됨 · '+at.toLocaleTimeString('ko-KR')+' (앱을 완전히 끄세요)';
- }catch(e){rlog('error','예약 테스트 실패: '+(e&&e.message||e));alert('실패: '+(e&&e.message||e));}
+  rlog('info','scheduled test in 1 min: '+at.toLocaleTimeString());
+  if(btn)btn.textContent='Scheduled · '+at.toLocaleTimeString()+' (now close the app completely)';
+ }catch(e){rlog('error','scheduled test failed: '+(e&&e.message||e));alert('Failed: '+(e&&e.message||e));}
 }
 async function testNotif(btn){
  const LN=nativeLN();
  if(LN){
-  try{if(!await ensurePerm()){alert('알림 권한이 필요합니다.');return;}
+  try{if(!await ensurePerm()){alert('Notification permission is required.');return;}
    await ensureChannel();
-   await LN.schedule({notifications:[{id:9,title:'Refuel 테스트',body:'알림이 잘 보이면 성공입니다.',channelId:CH,schedule:{at:new Date(Date.now()+1200)}}]});
-   rlog('info','테스트 알림 예약');if(btn)btn.textContent='전송됨';}
-  catch(e){rlog('error','테스트 알림 실패: '+(e&&e.message||e));alert('실패: '+(e&&e.message||e));}
+   await LN.schedule({notifications:[{id:9,title:'Refuel test',body:'If you can see this, alerts work.',channelId:CH,schedule:{at:new Date(Date.now()+1200)}}]});
+   rlog('info','test alert scheduled');if(btn)btn.textContent='Sent';}
+  catch(e){rlog('error','test alert failed: '+(e&&e.message||e));alert('Failed: '+(e&&e.message||e));}
  }else if('Notification'in window){
-  try{if(Notification.permission!=='granted')await Notification.requestPermission();new Notification('Refuel 테스트',{body:'알림이 잘 보이면 성공입니다.'});if(btn)btn.textContent='전송됨';}
-  catch(e){alert('알림 실패: '+e);}
- }else alert('이 환경은 알림을 지원하지 않습니다.');
+  try{if(Notification.permission!=='granted')await Notification.requestPermission();new Notification('Refuel test',{body:'If you can see this, alerts work.'});if(btn)btn.textContent='Sent';}
+  catch(e){alert('Alert failed: '+e);}
+ }else alert('This environment does not support notifications.');
 }
 
 // ---- 설정 패널 (우상단 ⚙) ----
@@ -430,29 +430,29 @@ function openSettings(){
  if($('#setpanel'))return;
  const ov=document.createElement('div');ov.id='setpanel';
  ov.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:9998;overflow:auto;padding:max(16px,env(safe-area-inset-top)) 16px 40px';
- ov.innerHTML=`<div class="top"><div class="brand">설정</div><button id="setclose" style="background:none;border:0;color:var(--tx);font-size:22px">✕</button></div>
-  <div class="setup"><b>연결</b><br>상태: ${PAIRED?'<span style="color:var(--acc)">연결됨</span>':'<span style="color:var(--warn)">미연결</span>'}
-   <button id="s_scan" style="width:100%;margin-top:8px">📷 다시 스캔 (연결/변경)</button>
-   ${PAIRED?'<button id="s_unpair" style="width:100%">연결 해제</button>':''}</div>
-  <div class="setup"><b>알림</b>${toggleRow('알림 받기','rf_notif')}${toggleRow('소리','rf_sound')}${toggleRow('진동','rf_vibe')}
-   <button id="s_test" style="width:100%;margin-top:8px">테스트 알림 (지금 바로)</button>
-   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">폰이 리셋 시각에 직접 알림을 울립니다. PC가 꺼져 있어도 동작합니다.</span></div>
-  <div class="setup"><b>🔎 알림 진단</b>
-   <div id="diagbox" style="background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:11px;white-space:pre-wrap;line-height:1.6">확인 중…</div>
-   <button id="s_exact" style="width:100%;margin-top:8px;display:none">정확한 알람 허용하기</button>
-   <button id="s_selftest" style="width:100%">⏱ 1분 뒤 알림 예약 (앱 꺼도 오는지 확인)</button>
-   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">리셋 알림과 <b>똑같은 방식</b>으로 겁니다. 예약 후 앱을 완전히 종료하고 1분만 기다려 보세요.</span>
-   <span style="color:var(--warn);font-size:11px;display:block;margin-top:6px">⚠ 안 오면: 폰 <b>설정 → 애플리케이션 → Refuel → 배터리 → 제한 없음</b>. 삼성·샤오미 등은 절전 기능이 예약 알림을 꺼버립니다.</span></div>
-  <div class="setup"><b>🩺 진단 로그</b>
+ ov.innerHTML=`<div class="top"><div class="brand">Settings</div><button id="setclose" style="background:none;border:0;color:var(--tx);font-size:22px">✕</button></div>
+  <div class="setup"><b>Connection</b><br>Status: ${PAIRED?'<span style="color:var(--acc)">Connected</span>':'<span style="color:var(--warn)">Not connected</span>'}
+   <button id="s_scan" style="width:100%;margin-top:8px">📷 Scan again (connect / change)</button>
+   ${PAIRED?'<button id="s_unpair" style="width:100%">Disconnect</button>':''}</div>
+  <div class="setup"><b>Alerts</b>${toggleRow('Receive alerts','rf_notif')}${toggleRow('Sound','rf_sound')}${toggleRow('Vibration','rf_vibe')}
+   <button id="s_test" style="width:100%;margin-top:8px">Test alert (right now)</button>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">Your phone rings the alert itself at reset time — it works even when the PC is off.</span></div>
+  <div class="setup"><b>🔎 Alert diagnostics</b>
+   <div id="diagbox" style="background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:11px;white-space:pre-wrap;line-height:1.6">Checking…</div>
+   <button id="s_exact" style="width:100%;margin-top:8px;display:none">Allow exact alarms</button>
+   <button id="s_selftest" style="width:100%">⏱ Schedule an alert in 1 minute (test with the app closed)</button>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">Scheduled <b>exactly like</b> a reset alert. Close the app completely and wait one minute.</span>
+   <span style="color:var(--warn);font-size:11px;display:block;margin-top:6px">⚠ Nothing arrived? Set <b>Settings → Apps → Refuel → Battery → Unrestricted</b>. Samsung, Xiaomi and others kill scheduled alerts to save power.</span></div>
+  <div class="setup"><b>🩺 Diagnostic log</b>
    <div id="logbox" style="max-height:150px;overflow:auto;background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:10px;font-family:Consolas,monospace;white-space:pre-wrap"></div>
-   <button id="logshare">공유</button> <button id="logcopy">복사</button> <button id="logclear">지우기</button></div>
-  ${PAIRED?`<div class="setup"><b>고급</b><br><span style="color:var(--mut);font-size:11px">ntfy 앱으로도 받기(선택). 토픽: <code>${esc(T)}-a</code></span> <button id="cpbtn">복사</button></div>`:''}
-  <div class="setup"><button id="s_demo" style="width:100%">🎬 데모 보기</button></div>`;
+   <button id="logshare">Share</button> <button id="logcopy">Copy</button> <button id="logclear">Clear</button></div>
+  ${PAIRED?`<div class="setup"><b>Advanced</b><br><span style="color:var(--mut);font-size:11px">Also receive via the ntfy app (optional). Topic: <code>${esc(T)}-a</code></span> <button id="cpbtn">Copy</button></div>`:''}
+  <div class="setup"><button id="s_demo" style="width:100%">🎬 View demo</button></div>`;
  document.body.append(ov);
  $('#setclose').onclick=()=>ov.remove();
- ov.querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=()=>{localStorage[c.dataset.k]=c.checked?'1':'0';rlog('info','설정 '+c.dataset.k+'='+c.checked);if(state)scheduleLocalNotifs(state.agents,true);});
+ ov.querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=()=>{localStorage[c.dataset.k]=c.checked?'1':'0';rlog('info','setting '+c.dataset.k+'='+c.checked);if(state)scheduleLocalNotifs(state.agents,true);});
  const a1=$('#s_scan');if(a1)a1.onclick=startScan;
- const a2=$('#s_unpair');if(a2)a2.onclick=()=>{if(confirm('연결을 해제할까요? PC에서 다시 스캔해야 합니다.')){delete localStorage.rf_t;delete localStorage.rf_k;rlog('info','연결 해제');location.reload();}};
+ const a2=$('#s_unpair');if(a2)a2.onclick=()=>{if(confirm('Disconnect? You will need to scan the QR again on your PC.')){delete localStorage.rf_t;delete localStorage.rf_k;rlog('info','Disconnect');location.reload();}};
  const a3=$('#s_test');if(a3)a3.onclick=()=>testNotif(a3);
  const refreshDiag=async()=>{
   const box=$('#diagbox');if(!box)return;
@@ -463,16 +463,16 @@ function openSettings(){
  refreshDiag();
  const ex=$('#s_exact');if(ex)ex.onclick=async()=>{
   const LN=nativeLN();if(!LN||!LN.changeExactNotificationSetting)return;
-  try{await LN.changeExactNotificationSetting();}catch(e){rlog('warn','정확 알람 설정 실패: '+e);}
+  try{await LN.changeExactNotificationSetting();}catch(e){rlog('warn','exact alarm setting failed: '+e);}
   if(state)await scheduleLocalNotifs(state.agents,true);   // 허용됐으면 정확 알람으로 다시 건다
   refreshDiag();
  };
  const stb=$('#s_selftest');if(stb)stb.onclick=async()=>{await selfTest(stb);refreshDiag();};
  const a4=$('#s_demo');if(a4)a4.onclick=()=>{location.hash='demo';location.reload();};
- const cp=$('#cpbtn');if(cp)cp.onclick=()=>{navigator.clipboard.writeText(T+'-a');cp.textContent='복사됨!'};
+ const cp=$('#cpbtn');if(cp)cp.onclick=()=>{navigator.clipboard.writeText(T+'-a');cp.textContent='Copied!'};
  const lb=$('#logbox');if(lb)lb.textContent=logTail();
- const ls=$('#logshare');if(ls)ls.onclick=async()=>{try{if(navigator.share){await navigator.share({title:'Refuel 진단 로그',text:logReport()});}else{await navigator.clipboard.writeText(logReport());ls.textContent='복사됨!';}}catch(e){rlog('warn','공유 취소/실패: '+e)}};
- const lc=$('#logcopy');if(lc)lc.onclick=async()=>{try{await navigator.clipboard.writeText(logReport());lc.textContent='복사됨!';}catch(e){}};
+ const ls=$('#logshare');if(ls)ls.onclick=async()=>{try{if(navigator.share){await navigator.share({title:'Refuel diagnostic log',text:logReport()});}else{await navigator.clipboard.writeText(logReport());ls.textContent='Copied!';}}catch(e){rlog('warn','share cancelled/failed: '+e)}};
+ const lc=$('#logcopy');if(lc)lc.onclick=async()=>{try{await navigator.clipboard.writeText(logReport());lc.textContent='Copied!';}catch(e){}};
  const lcl=$('#logclear');if(lcl)lcl.onclick=()=>{LOG=[];try{localStorage.removeItem(LOG_KEY)}catch(_){}$('#logbox').textContent=logTail();};
 }
 function tickCount(){
@@ -495,18 +495,18 @@ async function poll(){
      applyTheme(state.accent);break}
    }catch(e){bad++/* 복호화 실패(위조/구버전) → 무시 */}
   }
-  if(bad&&!pollState.badLogged){rlog('warn','복호화 실패 메시지 '+bad+'건 무시(키 불일치 또는 구버전). 재페어링 필요할 수 있음');pollState.badLogged=true}
-  if(state&&!pollState.ok){rlog('info','PC 상태 수신 성공(에이전트 '+(state.agents||[]).length+'개)');pollState.ok=true}
+  if(bad&&!pollState.badLogged){rlog('warn','ignored '+bad+' undecryptable message(s) (key mismatch or old version) - re-pairing may be needed');pollState.badLogged=true}
+  if(state&&!pollState.ok){rlog('info','received PC status ('+(state.agents||[]).length+' agent(s))');pollState.ok=true}
   render();
   if(state)scheduleLocalNotifs(state.agents);
   const age=state?Math.round((Date.now()/1000)-num(state.ts)):null;
-  $('#meta').innerHTML=state?(age>1200?`<span class="stale">PC ${Math.round(age/60)}분 전 응답</span>`:`동기화 ${new Date(lastFetch).toLocaleTimeString('ko-KR')} 🔒`):'대기 중';
- }catch(e){$('#meta').textContent='연결 실패(오프라인?)';
-  if(pollState.ok!==false){rlog('error','릴레이 연결 실패: '+(e&&e.message||e));pollState.ok=false}}
+  $('#meta').innerHTML=state?(age>1200?`<span class="stale">PC replied ${Math.round(age/60)}m ago</span>`:`synced ${new Date(lastFetch).toLocaleTimeString()} 🔒`):'Waiting';
+ }catch(e){$('#meta').textContent='Connection failed (offline?)';
+  if(pollState.ok!==false){rlog('error','relay connection failed: '+(e&&e.message||e));pollState.ok=false}}
 }
-rlog('info','앱 시작 · '+(DEMO?'데모':PAIRED?'연동':'미연결'));
+rlog('info','app start · '+(DEMO?'demo':PAIRED?'live':'not connected'));
 {const g=$('#gear');if(g)g.onclick=openSettings;}
-if(DEMO){state=demoState();render();$('#meta').textContent='데모';setInterval(tickCount,1000);}
+if(DEMO){state=demoState();render();$('#meta').textContent='Demo';setInterval(tickCount,1000);}
 else{
  render();poll();setInterval(poll,30000);setInterval(tickCount,1000);
  // 알림 폴링은 상태 폴링과 분리한다. 상태(-s)는 키가 있어야 복호화되고 실패하면 예외로
@@ -514,22 +514,25 @@ else{
  pollAlerts();setInterval(pollAlerts,30000);
 }
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
-// AdMob 배너 — 네이티브 앱(Capacitor)일 때만. 웹에선 아무 것도 안 함(가드).
+// AdMob 배너 — GitHub 배포판에서는 끈다.
+// 테스트 광고는 수익이 0인데 화면만 잡아먹고 "Test Ad"라 고장난 것처럼 보인다.
+// 스토어에 낼 때만 ADS_ENABLED=true 로 바꾸고 실제 광고 단위 ID를 넣는다
+// (개인정보처리방침에 광고 문단 추가 + AD_ID 권한 복원 필요 — android/store-listing.md 참고).
+const ADS_ENABLED=false;
+const AD_UNIT={android:'', ios:''};        // 스토어 배포 시 실제 단위 ID
 document.addEventListener('DOMContentLoaded',async()=>{
+ if(!ADS_ENABLED)return;
  const Cap=window.Capacitor;
- if(!Cap||!Cap.isNativePlatform||!Cap.isNativePlatform()){rlog('info','웹 실행 - 광고 없음');return}
+ if(!Cap||!Cap.isNativePlatform||!Cap.isNativePlatform()){rlog('info','running on web - no ads');return}
  const AdMob=Cap.Plugins&&Cap.Plugins.AdMob;
- if(!AdMob){rlog('error','AdMob 플러그인 없음(네이티브 등록 실패)');return}
- // ↓↓↓ 출시 전 실제 AdMob ID로 교체 (지금은 Google 공식 테스트 ID) ↓↓↓
- const IS_TESTING=true;   // 실제 출시 시 false
- const isIOS=(Cap.getPlatform&&Cap.getPlatform()==='ios');
- const TEST_BANNER=isIOS?'ca-app-pub-3940256099942544/2934735716':'ca-app-pub-3940256099942544/6300978111';
+ if(!AdMob){rlog('error','AdMob plugin missing (native registration failed)');return}
+ const adId=AD_UNIT[(Cap.getPlatform&&Cap.getPlatform())==='ios'?'ios':'android'];
+ if(!adId){rlog('warn','ad unit id not set - banner skipped');return}
  try{
-  await AdMob.initialize({initializeForTesting:IS_TESTING});
-  rlog('info','AdMob 초기화 완료'+(IS_TESTING?'(테스트 광고)':'(실제 광고)'));
-  await AdMob.showBanner({adId:TEST_BANNER,adSize:'BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:IS_TESTING});
+  await AdMob.initialize({});
+  await AdMob.showBanner({adId,adSize:'BANNER',position:'BOTTOM_CENTER',margin:0});
   document.body.style.paddingBottom='60px';   // 배너에 콘텐츠 가림 방지
-  rlog('info','AdMob 배너 표시 요청 성공');
- }catch(e){rlog('error','AdMob 실패: '+(e&&e.message||e));}
+  rlog('info','AdMob banner requested');
+ }catch(e){rlog('error','AdMob failed: '+(e&&e.message||e));}
 });
 </script></body></html>

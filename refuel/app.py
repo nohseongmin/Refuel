@@ -92,7 +92,7 @@ def theme():
 
 F = "Malgun Gothic"   # __init__에서 자동선택으로 덮어씀
 REFRESH_SECONDS = 20
-_WD = ["월", "화", "수", "목", "금", "토", "일"]
+_WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 _mutex_handle = None  # 단일 인스턴스 뮤텍스 참조 유지
 _WAKE_EVENT = "Refuel_ShowWindow_Event"   # 두 번째 실행 → 원래 창 띄우기 신호
 
@@ -190,7 +190,7 @@ def _deliver(title, msg):
             n.show()
             channel = "winotify"
         except Exception as e:
-            log.warning("winotify 실패: %s", e)
+            log.warning("winotify failed: %s", e)
     if channel is None:                   # 2순위: 트레이 풍선(폴백)
         tray = getattr(_APP, "tray", None)
         if tray is not None:
@@ -199,8 +199,8 @@ def _deliver(title, msg):
                 tray.notify(msg, title)
                 channel = "tray"
             except Exception as e:
-                log.warning("트레이 알림 실패: %s", e)
-    log.info("알림 표시: %s [%s]", title, channel or "실패-표시안됨")
+                log.warning("tray notification failed: %s", e)
+    log.info("alert shown: %s [%s]", title, channel or "failed-not-shown")
 
 
 def _drain_notifications():
@@ -217,12 +217,12 @@ def _notify(title, msg, phone=True):
     """어느 스레드에서든 안전. 화면 표시는 큐에 넣어 메인 스레드(_tick)가 꺼내 처리한다.
     (워커 스레드에서 직접 띄우면 풍선이 조용히 안 뜬다.)
     phone=False면 PC에만 표시 — 폰은 예약 발송이 담당하므로 중복을 막는다."""
-    log.info("알림: %s - %s", title, msg)
+    log.info("alert: %s - %s", title, msg)
     if phone:
         try:
             sync.post_alert(title, msg)
         except Exception as e:
-            log.warning("폰 알림 실패: %s", e)
+            log.warning("phone alert failed: %s", e)
     if getattr(_APP, "root", None) is not None:
         _notify_q.put((title, msg))     # 메인 스레드 _tick 이 꺼내 표시
     else:
@@ -248,7 +248,7 @@ def _set_autostart(enable):
                 pass
         winreg.CloseKey(key)
     except Exception as e:
-        log.warning("autostart 설정 실패: %s", e)
+        log.warning("autostart setting failed: %s", e)
 
 
 def _fmt_n(v):
@@ -265,13 +265,13 @@ def _fmt_short(v):
 
 
 def _fmt_dur(sec):
-    """1일 미만이면 HH:MM:SS, 이상이면 'N일 HH:MM:SS'."""
+    """1일 미만이면 HH:MM:SS, 이상이면 'Nd HH:MM:SS'."""
     if sec is None:
         return "--:--:--"
     sec = max(0, int(sec))
     days, rem = divmod(sec, 86400)
     base = f"{rem // 3600:02d}:{rem % 3600 // 60:02d}:{rem % 60:02d}"
-    return f"{days}일 {base}" if days else base
+    return f"{days}d {base}" if days else base
 
 
 # ---------------- 위젯 헬퍼 (테마 반복 제거) ----------------
@@ -362,11 +362,11 @@ class AgentCard:
         self.grass.bind("<Configure>", lambda e: self._render_grass(self._streak_data))
         legend = tk.Frame(d, bg=PANEL)
         legend.pack(anchor="w", padx=16, pady=(0, 12))
-        _lbl(legend, "적음", size=8).pack(side="left", padx=(0, 4))
+        _lbl(legend, "Less", size=8).pack(side="left", padx=(0, 4))
         for c in theme()["grass"][1:]:
             tk.Canvas(legend, width=9, height=9, bg=c,
                       highlightthickness=0).pack(side="left", padx=1)
-        _lbl(legend, "많음 · 진할수록 한도까지 사용", size=8).pack(side="left", padx=(4, 0))
+        _lbl(legend, "More · brighter = closer to the limit", size=8).pack(side="left", padx=(4, 0))
 
         self.sub = _lbl(d, "", size=10)
         self.sub.pack(anchor="w", padx=16, pady=(0, 2))
@@ -377,7 +377,7 @@ class AgentCard:
         self.bar = tk.Canvas(d, height=8, bg=TRACK, highlightthickness=0)
         self.bar.pack(fill="x", padx=16, pady=(2, 12))
 
-        _lbl(d, "최근 7일").pack(anchor="w", padx=16, pady=(0, 4))
+        _lbl(d, "Last 7 days").pack(anchor="w", padx=16, pady=(0, 4))
         self.daily = tk.Frame(d, bg=PANEL)
         self.daily.pack(fill="x", padx=16, pady=(0, 12))
 
@@ -401,30 +401,30 @@ class AgentCard:
             self.primary = "5h"
             self.reset_at = b["reset_at"]
             self.usage_ratio = b["ratio"]
-            extra = f" · 추정한도 {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
-            self.sub.config(text=f"5시간 리셋 {b['reset_at'].strftime('%H:%M')} · 윈도우 {_fmt_n(b['tokens'])} 토큰{extra}")
-            self.bd.config(text=f"오늘 {_fmt_n(a['today_tokens'])} · 입력 {_fmt_short(b['inp'])} · 출력 {_fmt_short(b['out'])} · 캐시 {_fmt_short(b['cache'])}")
+            extra = f" · est. limit {int(b['ratio'] * 100)}%" if b["ratio"] is not None else ""
+            self.sub.config(text=f"5h reset {b['reset_at'].strftime('%H:%M')} · window {_fmt_n(b['tokens'])} tokens{extra}")
+            self.bd.config(text=f"Today {_fmt_n(a['today_tokens'])} · in {_fmt_short(b['inp'])} · out {_fmt_short(b['out'])} · cache {_fmt_short(b['cache'])}")
         else:
             self.reset_at = None
             self.usage_ratio = None
-            self.bd.config(text=f"오늘 {_fmt_n(a['today_tokens'])}")
+            self.bd.config(text=f"Today {_fmt_n(a['today_tokens'])}")
             if wk_over:
                 self.primary = "weekly"
-                self.sub.config(text="주간 한도 도달 - 풀릴 때까지 대기")
+                self.sub.config(text="Weekly limit reached - waiting for reset")
             else:
                 self.primary = "full"
-                self.sub.config(text="활성 윈도우 없음 · 주간도 여유")
+                self.sub.config(text="No active window · weekly has room")
         if self.wk_reset:
             days = (self.wk_rem or 0) // 86400
-            when = f"리셋 {_WD[self.wk_reset.weekday()]} {self.wk_reset.strftime('%H:%M')}"
-            rtxt = f" · 추정 {int(self.wk_ratio * 100)}%" if self.wk_ratio is not None else ""
-            self.wk.config(text=f"주간 {_fmt_n(wk.get('tokens'))} 토큰 · {when} (D-{days}){rtxt}")
+            when = f"resets {_WD[self.wk_reset.weekday()]} {self.wk_reset.strftime('%H:%M')}"
+            rtxt = f" · est. {int(self.wk_ratio * 100)}%" if self.wk_ratio is not None else ""
+            self.wk.config(text=f"Weekly {_fmt_n(wk.get('tokens'))} tokens · {when} (D-{days}){rtxt}")
         st = a.get("streak") or {}
         cur, best = st.get("current", 0), st.get("best", 0)
         # Tk는 이모지를 단색으로 그려서 뭉개진다 → PC는 글자만 쓴다(폰은 이모지 그대로).
-        self.hstreak.config(text=f"연속 {cur}일" if cur else "", fg=self.app.accent())
+        self.hstreak.config(text=f"{cur}d streak" if cur else "", fg=self.app.accent())
         self.streak_lbl.config(
-            text=f"{cur}일 연속 사용 · 최고 {best}일" if cur else f"연속 기록 없음 · 최고 {best}일",
+            text=f"{cur} day streak · best {best}" if cur else f"No active streak · best {best}",
             fg=self.app.accent() if cur else MUT)
         self._render_grass(st)
         self._render_daily(a.get("daily", []))
@@ -467,7 +467,7 @@ class AgentCard:
         for d, v in reversed(daily):
             row = tk.Frame(self.daily, bg=PANEL)
             row.pack(fill="x", pady=3)
-            tag = "오늘" if d == today else f"{d.month:02d}/{d.day:02d} {_WD[d.weekday()]}"
+            tag = "Today" if d == today else f"{d.month:02d}/{d.day:02d} {_WD[d.weekday()]}"
             _lbl(row, tag, fg=TX, width=9, anchor="w").pack(side="left")
             _lbl(row, _fmt_short(v), width=7, anchor="e").pack(side="right")
             tr = tk.Canvas(row, height=7, bg=TRACK, highlightthickness=0)
@@ -509,7 +509,7 @@ class AgentCard:
             self._set_count(_fmt_dur(rem), th["dng"])
             self._set_bars(1 - rem / core.WEEKLY_WINDOW_SEC, self.wk_ratio, th["dng"])
             return rem
-        self._set_count("충전완료", acc)
+        self._set_count("Refueled", acc)
         self.bar.delete("all")
         self.hbar.delete("all")
         return None
@@ -582,7 +582,7 @@ class RefuelApp:
         # 포인터가 목록 위에 있을 때만 휠을 가로챈다(설정창 등 다른 창 스크롤을 뺏지 않도록).
         self.scroll.bind("<Enter>", lambda e: self.scroll.bind_all("<MouseWheel>", self._on_wheel))
         self.scroll.bind("<Leave>", lambda e: self.scroll.unbind_all("<MouseWheel>"))
-        self.empty = _lbl(self.cards_box, "불러오는 중…", size=10, bg=BG)
+        self.empty = _lbl(self.cards_box, "Loading…", size=10, bg=BG)
         self.empty.pack(anchor="w", pady=4)
 
     def _on_wheel(self, e):
@@ -607,7 +607,7 @@ class RefuelApp:
                 if ns["wk_reset"] is None:          # 첫 관측은 기준만 잡고 알리지 않음
                     ns["wk_reset"] = wkr
                 elif wkr != ns["wk_reset"]:         # 다음 리셋 시각이 밀림 = 주간이 초기화됨
-                    _notify(f"{nm} 주간 초기화", "주간 사용량 한도가 초기화되었습니다.", phone=False)
+                    _notify(f"{nm} weekly reset", "Your weekly usage limit has reset.", phone=False)
                     ns["wk_reset"] = wkr
 
             if b is not None:
@@ -615,7 +615,7 @@ class RefuelApp:
                 try:
                     sync.schedule_refill(a["id"], nm, b["start"], b["reset_at"])
                 except Exception as e:
-                    log.warning("예약 발송 실패: %s", e)
+                    log.warning("scheduled push failed: %s", e)
 
             # --- 5시간 초기화 ---
             # 윈도우가 사라졌거나(만료) 새 윈도우로 바뀌었으면 직전 윈도우가 리셋된 것.
@@ -623,7 +623,7 @@ class RefuelApp:
             # 폰 알림은 예약 발송이 담당(PC 꺼져도 도착) → 여기선 PC 화면만.
             start = b["start"] if b else None
             if ns["last_start"] is not None and start != ns["last_start"]:
-                _notify(f"{nm} 재충전 완료", "5시간 사용량 한도가 초기화되었습니다.", phone=False)
+                _notify(f"{nm} refueled", "Your 5-hour usage limit has reset.", phone=False)
             ns["last_start"] = start
         for dead in [k for k in self._ns if k not in live]:
             self._ns.pop(dead, None)
@@ -638,7 +638,7 @@ class RefuelApp:
                 self._check_notifications(s)
                 sync.post_state(s)
             except Exception:
-                log.exception("스캔 실패")
+                log.exception("scan failed")
             time.sleep(REFRESH_SECONDS)
 
     def _update_checker(self):
@@ -649,10 +649,10 @@ class RefuelApp:
                 try:
                     tag = _latest_release_tag()
                     if tag and _parse_ver(tag) > _parse_ver(__version__):
-                        _notify("업데이트 있음", f"Refuel {tag} 나왔어 - {_RELEASES_URL}")
+                        _notify("Update available", f"Refuel {tag} is out - {_RELEASES_URL}")
                         return
                 except Exception as e:
-                    log.info("업데이트 확인 실패(무시): %s", e)
+                    log.info("update check failed (ignored): %s", e)
             time.sleep(86400)
 
     # ---------- 렌더 ----------
@@ -682,7 +682,7 @@ class RefuelApp:
         self._card_order = ids
         self.empty.pack_forget()
         if not ids:
-            self.empty.config(text="불러오는 중…" if not self.ready else "감지된 에이전트 없음")
+            self.empty.config(text="Loading…" if not self.ready else "No agents detected")
             self.empty.pack(anchor="w", pady=4)
             return
         for a in agents:
@@ -696,7 +696,7 @@ class RefuelApp:
         try:
             self._tick_body()
         except Exception:
-            log.exception("_tick 실패(무시하고 계속)")
+            log.exception("_tick failed (continuing)")
         finally:
             self.root.after(1000, self._tick)
 
@@ -706,8 +706,8 @@ class RefuelApp:
             s = dict(self.state)
             ready = self.ready
         if ready:
-            on = "알림 ON" if (self.tray or _HAVE_TOAST) else "알림 OFF"
-            self.meta.config(text=f"{on} · 이벤트 {_fmt_n(s.get('total_events'))}")
+            on = "Alerts ON" if (self.tray or _HAVE_TOAST) else "Alerts OFF"
+            self.meta.config(text=f"{on} · {_fmt_n(s.get('total_events'))} events")
         agents = s.get("agents", [])    # 정렬(리셋 임박순)은 core.build_state가 끝냄
         self._reconcile(agents)
         soonest, soonest_name = None, ""
@@ -736,11 +736,11 @@ class RefuelApp:
         if getattr(self, "_settings_win", None) and tk.Toplevel.winfo_exists(self._settings_win):
             self._settings_win.lift()
             return
-        win = _dialog(self.root, "Refuel 설정")
+        win = _dialog(self.root, "Refuel Settings")
         self._settings_win = win
         cfg = core.CONFIG
 
-        _lbl(win, "주간 리셋", bg=BG).pack(anchor="w", pady=(2, 2))
+        _lbl(win, "Weekly reset", bg=BG).pack(anchor="w", pady=(2, 2))
         wkrow = tk.Frame(win, bg=BG)
         wkrow.pack(fill="x")
         dow_var = tk.StringVar(value=_WD[cfg["weekly_reset_dow"]])
@@ -753,25 +753,25 @@ class RefuelApp:
                           highlightbackground=BORDER, highlightthickness=1, width=6)
         e_hour.insert(0, str(cfg["weekly_reset_hour"]))
         e_hour.pack(side="left", padx=8, ipady=4)
-        _lbl(wkrow, "시", bg=BG).pack(side="left")
+        _lbl(wkrow, ":00", bg=BG).pack(side="left")
 
         tray_var = tk.BooleanVar(value=cfg["minimize_to_tray"])
         auto_var = tk.BooleanVar(value=cfg["autostart"])
         upd_var = tk.BooleanVar(value=cfg.get("check_updates", True))
-        for text, var in (("창 닫으면 트레이로 (우클릭 종료로만 완전 종료)", tray_var),
-                          ("윈도우 시작 시 자동 실행 (트레이로 조용히)", auto_var),
-                          ("새 버전 자동 확인 (GitHub, 하루 1회)", upd_var)):
+        for text, var in (("Close to tray (right-click the tray icon to quit)", tray_var),
+                          ("Start with Windows (silently, to tray)", auto_var),
+                          ("Check for updates (GitHub, once a day)", upd_var)):
             _chk(win, text, var).pack(anchor="w", pady=(10, 0))
 
         sync_var = tk.BooleanVar(value=cfg.get("sync_enabled", False))
         syncrow = tk.Frame(win, bg=BG)
         syncrow.pack(fill="x", pady=(10, 0))
-        _chk(syncrow, "폰 연동 (베타) - 알림·상태를 폰으로", sync_var).pack(side="left")
-        _btn(syncrow, "QR 페어링",
+        _chk(syncrow, "Phone sync (beta) - send alerts & status to your phone", sync_var).pack(side="left")
+        _btn(syncrow, "Pair with QR",
              lambda: (cfg.__setitem__("sync_enabled", True), sync_var.set(True),
                       core.save_config(), self._open_qr())).pack(side="right", ipadx=8, ipady=2)
 
-        _lbl(win, "강조 색상", bg=BG).pack(anchor="w", pady=(12, 2))
+        _lbl(win, "Accent color", bg=BG).pack(anchor="w", pady=(12, 2))
         accrow = tk.Frame(win, bg=BG)
         accrow.pack(anchor="w")
         acc_var = tk.StringVar(value=cfg["accent"])
@@ -781,9 +781,9 @@ class RefuelApp:
 
         btns = tk.Frame(win, bg=BG)
         btns.pack(fill="x", pady=(18, 0))
-        _btn(btns, "테스트 알림",
-             lambda: _notify("Refuel 테스트", "알림이 잘 보이면 성공!")).pack(side="left", ipady=4, ipadx=8)
-        _lbl(win, "* 테스트 알림은 폰 연동이 켜져 있고 폰 앱이 실행 중이면 30초 안에 폰에도 뜬다.",
+        _btn(btns, "Test alert",
+             lambda: _notify("Refuel test", "If you can see this, alerts work.")).pack(side="left", ipady=4, ipadx=8)
+        _lbl(win, "* With phone sync on, a test alert also reaches the phone app within 30s while it is running.",
              size=8, bg=BG, wraplength=380, justify="left").pack(anchor="w", pady=(6, 0))
 
         def save():
@@ -804,15 +804,15 @@ class RefuelApp:
             core.save_config()
             win.destroy()
 
-        _btn(btns, "저장", save, fg=BG, bg=acc_var.get(), size=10,
+        _btn(btns, "Save", save, fg=BG, bg=acc_var.get(), size=10,
              bold=True).pack(side="right", ipady=4, ipadx=20)
 
     # ---------- QR 페어링 ----------
     def _open_qr(self):
         url = sync.pair_url()
         alert_topic = sync.topic() + "-a"
-        win = _dialog(self.root, "폰 페어링", pady=16)
-        _lbl(win, "1) 폰 카메라로 QR 스캔 → 대시보드 열림", fg=TX, size=10, bg=BG).pack(anchor="w")
+        win = _dialog(self.root, "Pair your phone", pady=16)
+        _lbl(win, "1) Scan this QR with the Refuel app to open your dashboard", fg=TX, size=10, bg=BG).pack(anchor="w")
         try:
             import qrcode
             from PIL import ImageTk
@@ -820,22 +820,22 @@ class RefuelApp:
             self._qr_photo = ImageTk.PhotoImage(img)
             tk.Label(win, image=self._qr_photo, bg="white").pack(pady=10)
         except Exception as e:
-            log.warning("QR 생성 실패: %s", e)
-            _lbl(win, "(QR 모듈 없음 - 아래 링크를 직접 열기)", fg=theme()["warn"], bg=BG).pack(pady=6)
+            log.warning("QR generation failed: %s", e)
+            _lbl(win, "(QR module missing - open the link below instead)", fg=theme()["warn"], bg=BG).pack(pady=6)
         _readonly(win, url, size=8).pack(fill="x", ipady=3)
-        _lbl(win, "2) 푸시 알림: 폰에 ntfy 앱 설치 후 아래 토픽 구독",
+        _lbl(win, "2) Optional: subscribe to this topic in the ntfy app",
              fg=TX, size=10, bg=BG).pack(anchor="w", pady=(12, 2))
         _readonly(win, alert_topic).pack(fill="x", ipady=3)
-        _lbl(win, "* 상태는 종단간 암호화(AES-GCM) · 나가는 데이터는 토큰 수·시각뿐",
+        _lbl(win, "* Status is end-to-end encrypted (AES-GCM) · only token counts and times leave your PC",
              size=8, bg=BG).pack(anchor="w", pady=(8, 0))
 
         def rotate():
             sync.rotate()
             win.destroy()
             self._open_qr()
-            _notify("페어링 재발급", "이전 QR·토픽은 무효화됨. 폰에서 다시 스캔해줘.")
+            _notify("Pairing reset", "The old QR and topic are now invalid. Scan again on your phone.")
 
-        _btn(win, "토픽·키 재발급 (유출 의심 시)", rotate,
+        _btn(win, "Regenerate topic & key (if leaked)", rotate,
              fg=theme()["warn"]).pack(anchor="w", pady=(10, 0), ipadx=8, ipady=3)
 
     # ---------- 트레이 / 종료 ----------
@@ -857,7 +857,7 @@ class RefuelApp:
             self.root.attributes("-topmost", True)          # 확실히 앞으로
             self.root.after(300, lambda: self.root.attributes("-topmost", False))
         except Exception as e:
-            log.warning("창 띄우기 실패: %s", e)
+            log.warning("window raise failed: %s", e)
 
     def _watch_wake_signal(self):
         """다른 인스턴스가 실행되면 창을 띄워달라는 신호를 기다린다(데몬 스레드)."""
@@ -892,14 +892,14 @@ class RefuelApp:
             return
         try:
             menu = pystray.Menu(
-                pystray.MenuItem("열기", lambda: self._show(), default=True),
-                pystray.MenuItem("설정", lambda: self.root.after(0, self._open_settings)),
-                pystray.MenuItem("종료", lambda: self.root.after(0, self._quit)),
+                pystray.MenuItem("Open", lambda: self._show(), default=True),
+                pystray.MenuItem("Settings", lambda: self.root.after(0, self._open_settings)),
+                pystray.MenuItem("Quit", lambda: self.root.after(0, self._quit)),
             )
             self.tray = pystray.Icon("Refuel", self._make_icon_image(), "Refuel", menu)
             threading.Thread(target=self.tray.run, daemon=True).start()
         except Exception as e:
-            log.warning("트레이 시작 실패: %s", e)
+            log.warning("tray start failed: %s", e)
             self.tray = None
 
     def _consent_gate(self):
@@ -907,25 +907,25 @@ class RefuelApp:
         if core.has_consented():
             return True
         self.root.deiconify()
-        win = _dialog(self.root, "Refuel — 사용 동의", padx=22)
+        win = _dialog(self.root, "Refuel — Terms", padx=22)
         win.transient(self.root)
         result = {"ok": False}
 
-        _lbl(win, "사용 전 동의", fg=self.accent(), size=14, bold=True, bg=BG).pack(anchor="w")
+        _lbl(win, "Before you start", fg=self.accent(), size=14, bold=True, bg=BG).pack(anchor="w")
 
         # 버튼 영역을 '먼저' 하단에 고정한다. 텍스트를 먼저 넣으면 창이 커지면서
         # 화면 밖으로 밀려 동의 버튼이 안 보이는 문제가 생긴다.
         agree = tk.BooleanVar(value=False)
         row = tk.Frame(win, bg=BG)
         row.pack(side="bottom", fill="x", pady=(12, 0))
-        chk = _chk(win, "위 내용을 읽었으며 이에 동의합니다.", agree)
+        chk = _chk(win, "I have read and agree to the above.", agree)
         chk.config(font=_font(10))
         chk.pack(side="bottom", anchor="w")
 
-        btn = _btn(row, "동의하고 시작", None, fg=MUT, bg=BORDER, size=10, bold=True,
+        btn = _btn(row, "Agree & start", None, fg=MUT, bg=BORDER, size=10, bold=True,
                    state="disabled", cursor="")
         btn.pack(side="right", ipadx=16, ipady=5)
-        _btn(row, "동의 안 함 (종료)", win.destroy, fg=MUT, bg=BG).pack(side="left")
+        _btn(row, "Decline (quit)", win.destroy, fg=MUT, bg=BG).pack(side="left")
 
         def toggle():
             if agree.get():
@@ -972,7 +972,7 @@ class RefuelApp:
     def run(self):
         self._start_tray()
         if not self._consent_gate():
-            log.info("면책조항 미동의 - 종료")
+            log.info("Disclaimer declined - exiting")
             self._quit()
             return
         if core.CONFIG["autostart"]:
@@ -988,7 +988,7 @@ def main():
     if not _single_instance():
         # 알림으로 알리는 대신 이미 떠 있는 창을 앞으로 띄운다.
         if not _wake_running_instance():
-            _notify("Refuel", "이미 실행 중이에요.", phone=False)   # 신호 실패 시에만 안내
+            _notify("Refuel", "Refuel is already running.", phone=False)   # 신호 실패 시에만 안내
         return
     RefuelApp(start_hidden="--minimized" in sys.argv).run()
 

@@ -96,7 +96,7 @@ def _fire(payload):
         try:
             _post_json(payload)
         except Exception as e:
-            log.warning("sync 전송 실패: %s", e)
+            log.warning("sync upload failed: %s", e)
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -138,17 +138,17 @@ def schedule_refill(agent_id, name, block_start, reset_at):
         sched[agent_id] = reset_epoch
         core.CONFIG["sync_scheduled"] = sched
         core.save_config()
-        log.info("예약 형식 이관(재예약 안 함): %s", name)
+        log.info("migrated legacy schedule format (not rescheduling): %s", name)
         return
     if isinstance(prev, (int, float)) and abs(reset_epoch - prev) < SCHEDULE_TOL:
         return   # 같은 윈도우에 이미 예약됨
     sched[agent_id] = reset_epoch
     core.CONFIG["sync_scheduled"] = sched
     core.save_config()
-    _fire({"topic": topic() + "-a", "title": f"{name} 재충전 완료",
-           "message": "5시간 사용량 한도가 초기화되었습니다.",
+    _fire({"topic": topic() + "-a", "title": f"{name} refueled",
+           "message": "Your 5-hour usage limit has reset.",
            "priority": 4, "delay": str(reset_epoch)})
-    log.info("재충전 푸시 예약: %s @ %s", name, reset_at.strftime("%H:%M"))
+    log.info("refuel push scheduled: %s @ %s", name, reset_at.strftime("%H:%M"))
 
 
 def _epoch(dt):
@@ -191,7 +191,7 @@ def post_state(state):
     if sig == _last_post["sig"] and (now - _last_post["ts"]) < HEARTBEAT_SEC:
         return
     if not _HAVE_AES:
-        log.warning("cryptography 모듈 없음 - 상태 전송 중단(평문 전송은 하지 않음)")
+        log.warning("cryptography module missing - status upload stopped (never sent in plaintext)")
         return
     _last_post.update(ts=now, sig=sig)
     _fire({"topic": topic() + "-s", "message": _encrypt(_compact(state)),

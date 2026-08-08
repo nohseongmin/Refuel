@@ -62,15 +62,17 @@ CONFIG = dict(DEFAULTS)
 # 면책조항 버전 — 내용이 바뀌면 올려서 재동의를 받는다.
 DISCLAIMER_VERSION = "1"
 DISCLAIMER_TEXT = (
-    "Refuel은 비공식 도구이며 Anthropic·OpenAI·Cursor 등 어떤 회사와도 무관합니다.\n\n"
-    "• 표시되는 한도·리셋 시각은 로컬 로그를 바탕으로 한 추정치이며, "
-    "정확성을 보장하지 않습니다. 참고용으로만 사용하세요.\n\n"
-    "• '폰 연동'을 켠 경우에 한해, 토큰 사용량 수치·시각·에이전트 이름이 암호화되어 "
-    "중계 서비스(ntfy)를 거쳐 본인 기기로 전송됩니다. 코드·프롬프트·API 키는 전송되지 "
-    "않으며, 개발자는 그 데이터에 접근할 수 없습니다. 폰 연동은 기본 꺼져 있고 언제든 끌 수 있습니다.\n\n"
-    "• 이 소프트웨어는 '있는 그대로' 제공되며 어떠한 보증도 하지 않습니다. "
-    "사용으로 발생하는 결과에 대한 책임은 사용자 본인에게 있습니다.\n\n"
-    "• 전체 소스코드는 github.com/nohseongmin/Refuel 에서 확인할 수 있습니다."
+    "Refuel is an unofficial tool and is not affiliated with Anthropic, OpenAI, "
+    "Cursor, or any other company.\n\n"
+    "• Limits and reset times shown here are estimates derived from your local logs. "
+    "They are not guaranteed to be accurate — treat them as a rough guide.\n\n"
+    "• Only if you turn on 'Phone sync': token counts, timestamps and agent names are "
+    "encrypted and relayed to your own device through ntfy. Your code, prompts and API "
+    "keys are never sent, and the developer cannot read that data. Phone sync is off by "
+    "default and can be turned off at any time.\n\n"
+    "• This software is provided 'as is', without warranty of any kind. You are "
+    "responsible for how you use it.\n\n"
+    "• Full source code: github.com/nohseongmin/Refuel"
 )
 
 
@@ -89,7 +91,7 @@ def load_config():
         if CONFIG_PATH.exists():
             CONFIG.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
     except Exception as e:
-        log.warning("config 로드 실패: %s", e)
+        log.warning("config load failed: %s", e)
     return CONFIG
 
 
@@ -98,7 +100,7 @@ def save_config():
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_PATH.write_text(json.dumps(CONFIG, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
-        log.warning("config 저장 실패: %s", e)
+        log.warning("config save failed: %s", e)
 
 
 # ---------------- 히스토리(SQLite) ----------------
@@ -123,7 +125,7 @@ def _persist_daily(agent, rows):
         con.commit()
         con.close()
     except Exception as e:
-        log.warning("history 저장 실패: %s", e)
+        log.warning("history save failed: %s", e)
 
 
 def _history_daily(agent):
@@ -134,7 +136,7 @@ def _history_daily(agent):
         con.close()
         return m
     except Exception as e:
-        log.warning("history 로드 실패: %s", e)
+        log.warning("history load failed: %s", e)
         return {}
 
 
@@ -230,7 +232,7 @@ def _parse_claude_file(path, agent):
                                      usage.get("output_tokens", 0) or 0,
                                      cache, msg.get("id") or obj.get("uuid")))
     except Exception as e:
-        log.warning("parse 실패 %s: %s", path, e)
+        log.warning("parse failed %s: %s", path, e)
     return events
 
 
@@ -259,7 +261,7 @@ def _parse_codex_file(path, agent):
                                      usage.get("output_tokens", 0) or 0,
                                      usage.get("cached_input_tokens", 0) or 0))
     except Exception as e:
-        log.warning("codex parse 실패 %s: %s", path, e)
+        log.warning("codex parse failed %s: %s", path, e)
     return events
 
 
@@ -267,7 +269,7 @@ def _parse_codex_file(path, agent):
 AGENTS = {
     "claude-code": {"name": "Claude Code", "dirs": claude_dirs, "glob": "**/*.jsonl",
                     "parser": _parse_claude_file},
-    "codex": {"name": "Codex (실험)", "dirs": codex_dirs, "glob": "**/*.jsonl",
+    "codex": {"name": "Codex (experimental)", "dirs": codex_dirs, "glob": "**/*.jsonl",
               "parser": _parse_codex_file},
 }
 

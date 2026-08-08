@@ -1,63 +1,78 @@
-<!doctype html><html lang="ko"><head>
+<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Refuel 개인정보처리방침</title>
+<title>Refuel Privacy Policy</title>
 <style>
-body{max-width:720px;margin:0 auto;padding:32px 20px;font-family:'Malgun Gothic',system-ui,sans-serif;
+body{max-width:720px;margin:0 auto;padding:32px 20px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
 background:#0d0f14;color:#e7eaf0;line-height:1.8}
-h1{color:#46e08a;font-size:22px} h2{font-size:16px;margin-top:28px;color:#e7eaf0}
+h1{color:#49df94;font-size:22px} h2{font-size:16px;margin-top:28px;color:#e7eaf0}
 p,li{font-size:14px;color:#b9c0cc} code{background:#141821;padding:2px 6px;border-radius:6px;font-size:12px}
-.date{color:#8a93a4;font-size:12px}
+.date{color:#8a93a4;font-size:12px} a{color:#49a0df}
 </style></head><body>
-<h1>Refuel 개인정보처리방침 (Privacy Policy)</h1>
-<p class="date">시행일: 2026-07-10</p>
+<h1>Refuel Privacy Policy</h1>
+<p class="date">Effective: 2026-08-09 · Applies to Refuel 1.0.0 (Windows app, Android app, web dashboard)</p>
 
-<h2>요약</h2>
-<p><b>계정도 로그인도 없고, 개발자는 사용자의 코드·프롬프트·개인정보를 수집하지 않습니다.</b>
-다만 Android 앱에는 광고(Google AdMob)가 포함되어 있어, 광고 제공을 위해 Google이 광고 식별자를
-사용합니다(3절 참고). 웹 대시보드에는 광고가 없습니다.</p>
+<h2>Summary</h2>
+<p><b>No account, no login, no analytics, no ads, and no collection of your code or prompts.</b>
+Refuel reads usage logs that already exist on your own machine and keeps everything local unless
+you explicitly turn on phone sync.</p>
 
-<h2>1. 수집하는 정보</h2>
+<h2>1. What is read</h2>
 <ul>
-<li>개발자는 사용자를 식별할 수 있는 개인정보(이름·이메일·계정 등)를 수집하지 않습니다.
-광고 관련 정보는 Google AdMob이 처리하며 3절에서 설명합니다.</li>
-<li>PC 프로그램은 사용자 PC에 이미 저장된 AI 코딩 도구의 로컬 사용 기록에서
-<b>토큰 수·시각·도구 이름</b>만 읽어 집계합니다. 코드·대화 내용·API 키는 읽지 않습니다.</li>
+<li>The developer collects no personally identifying information — no name, email, or account.</li>
+<li>The Windows app reads the local log files your AI coding tool already writes, and extracts only
+<b>token counts, timestamps and the tool's name</b>. Your code, conversations, prompts and API keys
+are never read or transmitted.</li>
+<li>Log files are opened read-only and are never modified.</li>
 </ul>
 
-<h2>2. 전송되는 데이터 (폰 연동을 켠 경우에만)</h2>
+<h2>2. What leaves your device (only if you enable phone sync)</h2>
 <ul>
-<li>전송 항목: 토큰 사용량 수치, 시각, 도구 이름 — 이것이 전부입니다.</li>
-<li>해당 데이터는 <b>AES-GCM으로 종단간 암호화</b>되어 오픈소스 릴레이(ntfy)를 경유합니다.
-릴레이 서버는 암호문만 볼 수 있으며, 복호화 키는 사용자의 PC와 폰에만 존재합니다.</li>
-<li>폰 연동은 기본 꺼짐(옵트인)이며 언제든 끌 수 있습니다.</li>
+<li>Phone sync is <b>off by default</b>. Nothing leaves your PC until you turn it on.</li>
+<li>What is sent: token counts, timestamps, agent names, and your chosen accent colour. That is all.</li>
+<li>The payload is <b>end-to-end encrypted with AES-GCM</b> and relayed through
+<a href="https://ntfy.sh">ntfy.sh</a>, an open-source push relay. The relay only ever sees ciphertext.
+The decryption key exists only on your PC and your phone.</li>
+<li>The channel is a 166-bit random secret topic. The key is transferred only inside the QR code's
+URL fragment (<code>#</code>), which browsers never send to any server.</li>
+<li>You can turn phone sync off at any time, and regenerating the topic and key immediately
+invalidates any existing pairing.</li>
 </ul>
 
-<h2>3. 광고 (Android 앱)</h2>
+<h2>3. No advertising, no analytics</h2>
+<p>This release contains <b>no advertising and no analytics or tracking SDKs</b>. The Android app
+requests no advertising identifier. Nothing about your behaviour is recorded or transmitted for
+any purpose beyond showing you your own usage.</p>
+
+<h2>4. Android permissions</h2>
 <ul>
-<li>Android 앱에는 <b>Google AdMob</b> 광고가 포함되어 있습니다. 이를 위해 Google이
-<b>광고 식별자(Advertising ID)</b> 및 기기·이용 정보를 수집·처리할 수 있습니다.</li>
-<li>광고는 앱 하단 배너 형태이며, 광고 노출을 위해 필요한 최소 정보만 사용됩니다.
-개발자는 광고 목적의 사용자 데이터를 직접 수집하거나 보관하지 않습니다.</li>
-<li>Google의 데이터 처리 방식:
-<a href="https://policies.google.com/technologies/partner-sites" style="color:#5a8dee">Google 파트너 사이트 정책</a></li>
-<li>개인 맞춤 광고는 기기 설정(Android → 설정 → Google → 광고)에서 재설정하거나 선택 해제할 수 있습니다.</li>
-<li><b>웹 대시보드(PWA)에는 광고가 없습니다.</b> 광고는 Android 앱에만 포함됩니다.</li>
+<li><b>Internet</b> — only used to poll the relay when phone sync is on.</li>
+<li><b>Camera</b> — used only while you are scanning the pairing QR. No image is stored or transmitted.</li>
+<li><b>Notifications</b> — to show limit-reset alerts.</li>
+<li><b>Exact alarms</b> — so a reset alert fires at the right minute instead of being delayed by
+power saving. You can revoke it in Android settings.</li>
+<li><b>Boot completed / wake lock</b> — required by the notification component to restore scheduled
+alerts after a reboot.</li>
 </ul>
 
-<h2>3-1. 분석·추적</h2>
-<p>분석(Analytics) SDK나 사용자 행동 추적 기술은 사용하지 않습니다.
-코드·프롬프트·대화 내용은 광고를 포함한 어떤 목적으로도 수집·전송되지 않습니다.</p>
-
-<h2>4. 데이터 보관·삭제</h2>
+<h2>5. Storage and deletion</h2>
 <ul>
-<li>모든 설정·기록은 사용자 기기(PC의 <code>~/.refuel</code>, 폰 브라우저 저장소)에만 보관됩니다.</li>
-<li>앱 삭제 또는 브라우저 데이터 삭제로 완전히 제거됩니다. 서버에 남는 것이 없습니다.</li>
+<li>Settings and history live only on your own devices: <code>~/.refuel</code> on the PC, and the
+browser storage of the phone app.</li>
+<li>Uninstalling the app and deleting that folder removes everything. Nothing is retained on any server.</li>
+<li>Messages passing through the relay are transient and are not archived by the developer.</li>
 </ul>
 
-<h2>5. 오픈소스</h2>
-<p>전체 소스코드가 공개되어 있어 위 내용을 직접 검증할 수 있습니다:
-<a href="https://github.com/nohseongmin/Refuel" style="color:#5a8dee">github.com/nohseongmin/Refuel</a></p>
+<h2>6. Third-party services</h2>
+<ul>
+<li><b>ntfy.sh</b> — the relay, used only when phone sync is on. It receives ciphertext only.</li>
+<li><b>GitHub</b> — contacted once a day to check for a newer release (read-only, no account).
+This can be turned off in settings.</li>
+</ul>
 
-<h2>6. 문의</h2>
-<p>GitHub 저장소의 Issues로 문의해 주세요.</p>
+<h2>7. Open source</h2>
+<p>The full source is public so you can verify all of the above yourself:
+<a href="https://github.com/nohseongmin/Refuel">github.com/nohseongmin/Refuel</a></p>
+
+<h2>8. Contact</h2>
+<p>Please open an issue on the GitHub repository.</p>
 </body></html>

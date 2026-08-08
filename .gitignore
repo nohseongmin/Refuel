@@ -42,3 +42,4 @@ android-app/ios/App/output/
 android-app/ios/App/DerivedData/
 android-app/ios/App/App/public/
 android-app/*.ipa
+release/

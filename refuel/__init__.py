@@ -1,2 +1,2 @@
-"""Refuel - AI 토큰 사용량 / 재충전 모니터."""
-__version__ = "0.9.0"
+"""Refuel - AI coding-agent token usage and refuel monitor."""
+__version__ = "1.0.0"

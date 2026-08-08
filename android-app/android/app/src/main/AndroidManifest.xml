@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -45,4 +46,8 @@
          부정확 알람으로 강등돼 절전(Doze) 중 수십 분까지 밀린다.
          사용자가 '알람 및 리마인더'에서 켜야 하며, 앱 설정에서 상태 확인/요청 가능. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- 광고 SDK가 끌고 오는 광고 식별자 권한. GitHub 배포판은 광고를 끄므로 병합에서 제거한다.
+         (스토어에 광고를 켜서 낼 때는 이 두 줄을 지워 권한을 되살려야 한다) -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
 </manifest>

@@ -1,89 +1,152 @@
 # ⛽ Refuel
 
-> **AI 코딩 에이전트 연료 게이지** — 토큰 얼마나 썼고, 언제 다시 충전되는지, 알아서 알려주는 트레이 앱.
+> **A fuel gauge for AI coding agents** — see how many tokens you've burned, when your limit refuels, and get told the moment it does.
 
 [![Release](https://img.shields.io/github/v/release/nohseongmin/Refuel?label=release&color=46e08a)](https://github.com/nohseongmin/Refuel/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-10%2F11-5a8dee)](https://github.com/nohseongmin/Refuel/releases/latest)
-[![Python](https://img.shields.io/badge/Python-3.12-f5c451)](https://www.python.org/)
-[![Privacy](https://img.shields.io/badge/network-0%20calls-46e08a)](#-프라이버시)
+[![Android](https://img.shields.io/badge/Android-7%2B-46e08a)](https://github.com/nohseongmin/Refuel/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-f5c451)](LICENSE)
 
-토큰 다 쓰고 리셋 기다리는데 **언제 풀리는지 기억 안 나서** 답답했던 적 있다면 — 이 앱이 대신 기억하고, 풀리면 알려준다.
+You hit the limit, you wait — and then you forget exactly when it comes back. Refuel remembers for you and tells you the moment it's free.
 
-그리고 매일 쓴 기록은 **깃허브 잔디처럼** 쌓인다. 많이 쓴 날일수록 연두에서 초록으로 진해진다.
+Every day you use it also gets planted on a **contribution-graph style calendar**, so you can see your streak at a glance.
 
 ---
 
-## ✨ 기능
+## ✨ Features
 
 | | |
 |---|---|
-| 🌱 **잔디 & 연속 기록** | 깃허브 잔디처럼 16주치 사용 달력. 사용량에 비례해 **연두→초록 5단계**로 진해진다. 며칠 연속 썼는지·최고 기록까지 (PC·폰 동시) |
-| ⏳ **재충전 카운트다운** | 5시간 윈도우 리셋까지 실시간 카운트다운 + 리셋 시각 |
-| 📅 **주간 한도 추적** | 5시간이 풀려도 주간 한도가 병목이면 주간 리셋 카운트다운으로 자동 전환 |
-| 🔔 **알아서 알림** | 초기화 2종만 — 5시간 리셋 · 주간 리셋. 폰은 PC가 꺼져 있어도 도착 |
-| 🤖 **에이전트 자동 발견** | 설치된 에이전트 로그를 스스로 찾음. 경로 설정 없음 (Claude Code 지원, Codex 실험적) |
-| 📊 **사용량 대시보드** | 현재 윈도우(입력/출력/캐시 분리) · 오늘 · 이번 주 · 최근 7일 일별 그래프 |
-| 🎯 **한도 자동 추정** | 과거 사용 패턴(최대 윈도우/주간)으로 한도 % 자동 계산 — 입력할 것 없음 |
-| 🔄 **업데이트 알림** | 새 릴리스 나오면 알림 (GitHub 읽기 전용, 하루 1회, 설정에서 끔) |
-| 🖥️ **트레이 상주** | 닫으면 트레이로, 호버하면 카운트다운, 우클릭 종료. 단일 인스턴스 |
-
-## 📥 설치
-
-[**최신 릴리스에서 Refuel.exe 다운로드**](https://github.com/nohseongmin/Refuel/releases/latest) → 더블클릭. 끝.
-
-> ⚠️ 미서명 exe라 Windows SmartScreen 경고가 뜰 수 있어요 → **"추가 정보" → "실행"**.
-> 🔕 알림이 안 뜨면 → Windows **방해 금지(집중 지원)** 가 켜져 있는지 확인하세요. (설정 → 시스템 → 알림)
-
-### 소스로 실행 / 빌드
-
-```bash
-pip install -r requirements.txt
-python run.py          # 실행
-build.bat              # exe 빌드 → dist\Refuel.exe
-```
-
-## 🔒 프라이버시 & 보안
-
-- **기본 동작은 네트워크 호출 0회.** 모든 데이터는 PC 안에서만 처리.
-- 로그 파일을 **읽기만** 하며, 코드/프롬프트가 아닌 **토큰 수·시각**만 집계.
-- 저장 위치: `~/.refuel/` (설정 `config.json` · 히스토리 `history.db` · 로그 `refuel.log`)
-- **폰 연동(옵트인, 기본 OFF)** 시에도:
-  - 나가는 데이터 = 토큰 수·시각·에이전트명뿐. 코드/프롬프트/키는 절대 안 나감.
-  - 상태 페이로드는 **AES-GCM 종단간 암호화** — 릴레이(ntfy)는 암호문만 봄, 위조 주입도 인증 태그로 차단.
-  - 채널 = 166비트 랜덤 비밀 토픽. 암호화 키는 **QR 프래그먼트(#)로만 전달** — 어떤 서버로도 전송되지 않음.
-  - 유출 의심 시 QR 창에서 **토픽·키 재발급** 원클릭.
-- 소스 전체 공개 — 직접 확인 가능.
-- 비공식 추정 도구이며, 사용 시 [면책조항](DISCLAIMER.md)에 동의한 것으로 간주됩니다(PC 앱 최초 실행 시 명시적 동의).
-
-## ⚙️ 설정 (앱 내 ⚙ 버튼)
-
-주간 리셋 요일/시각 · 창 닫으면 트레이로 · 윈도우 시작 시 자동 실행 · 강조 색상 · 테스트 알림
-
-> 💡 주간 리셋 요일/시각을 본인 플랜의 실제 리셋(Claude Code `/usage` 참고)으로 맞추면 주간 카운트다운이 정확해집니다.
-
-## 🧠 동작 원리
-
-```
-에이전트 로그(~/.claude/projects/*.jsonl 등)
-   → 자동 발견·파싱 (mtime 캐시)
-   → 5시간 롤링 윈도우 + 주간 버킷 계산
-   → 한도 추정(과거 최대) → 게이지·카운트다운·알림
-```
-
-- 5시간 윈도우: 첫 메시지 시각 + 5h = 리셋. 로그 타임스탬프 기반 *추정*이라 공식 `/usage`와 1~2분 오차 가능.
-- 한도 %: 실제 플랜 천장이 아니라 **내 과거 최대 사용량** 기준. 데이터가 쌓일수록 정확해짐.
-
-## 🗺️ 로드맵
-
-- [x] 0.x — 데스크톱 트레이 앱 (지금)
-- [ ] 에이전트 추가 (Codex 검증, Gemini CLI …)
-- [ ] **1.0 — 폰 연결**: PC 수집기 → 클라우드 → 폰 푸시 알림 (iOS/Android)
-- [ ] 한도 도달 시각 *예측*, 멀티 PC 합산
-
-## 🧰 스택
-
-Python 3.12 · Tkinter(GUI) · pystray(트레이/알림) · winotify(토스트 폴백) · SQLite(히스토리) · PyInstaller(단일 exe) · GitHub Actions(자동 릴리스)
+| 🌱 **Grass & streaks** | 16 weeks of daily usage, GitHub-style. Days shade from dark to bright in 5 steps depending on how much you used. Shows your current and best streak (PC + phone) |
+| ⏳ **Refuel countdown** | Live countdown to the 5-hour rolling window reset, with the exact reset time |
+| 📅 **Weekly limit tracking** | If the 5-hour window is free but the weekly limit is the bottleneck, the card switches to a weekly countdown automatically |
+| 🔔 **Alerts that matter** | Only two: 5-hour reset and weekly reset. Your phone rings them **even when the PC is off** |
+| 🤖 **Agent auto-discovery** | Finds your agent logs by itself — no paths to configure (Claude Code supported, Codex experimental) |
+| 📊 **Usage dashboard** | Current window (input / output / cache split) · today · this week · last 7 days |
+| 🎯 **Limit estimation** | Learns your limit from your own past usage — nothing to enter |
+| 🎨 **One-color theming** | Pick an accent and *everything* follows — alerts, warnings, grass, bars. Your phone picks up the same color automatically |
+| 🖥️ **Lives in the tray** | Close to tray, hover for the countdown, right-click to quit. Single instance — launching again just brings the window back |
 
 ---
 
-Made with ⛽ by [nohseongmin](https://github.com/nohseongmin) — *Your code never leaves your machine. Only the gauge does.*
+## 📥 Install
+
+### Windows (the collector)
+
+1. Download **`Refuel.exe`** from the [latest release](https://github.com/nohseongmin/Refuel/releases/latest)
+2. Double-click it. That's it — no installer, no admin rights.
+
+> Windows SmartScreen may warn you because the binary isn't code-signed (signing certificates cost money). Click **More info → Run anyway**, or [build it yourself](#-build-from-source).
+
+### Android (optional, for phone alerts)
+
+1. Download **`Refuel.apk`** from the same release
+2. Allow "install from unknown sources" when prompted
+3. Open the app → **Scan QR to connect**
+4. On the PC: **⚙ → Pair with QR**, then scan it
+
+### iPhone / anything else
+
+Open <https://nohseongmin.github.io/Refuel/> in Safari and **Add to Home Screen**. The dashboard works as a web app; background push is limited on iOS (see [MANUAL.md](docs/MANUAL.md)).
+
+---
+
+## 🚀 Quick start
+
+```
+1. Run Refuel.exe          → it finds your agent logs automatically
+2. Use your AI agent       → usage appears within ~20 seconds
+3. (optional) ⚙ → Phone sync → Pair with QR → scan on your phone
+```
+
+There is nothing else to configure. No API keys, no account, no login.
+
+Full walkthrough: **[INSTALL.md](docs/INSTALL.md)** · Everything else: **[MANUAL.md](docs/MANUAL.md)**
+
+---
+
+## 🔒 Privacy
+
+- **By default Refuel makes no network calls.** Everything stays on your PC.
+- It only **reads** your local log files, and only counts **tokens and timestamps** — never your code or prompts.
+- Stored in `~/.refuel/` (`config.json`, `history.db`, `refuel.log`).
+- **Phone sync is opt-in and off by default.** When you turn it on:
+  - What leaves your PC: token counts, timestamps, agent names. Nothing else.
+  - The status payload is **end-to-end encrypted (AES-GCM)** — the relay (ntfy.sh) only ever sees ciphertext, and the GCM tag blocks forged status injection.
+  - The channel is a **166-bit random secret topic**. The encryption key is passed **only in the QR fragment (`#`)**, which browsers never send to any server.
+  - One click regenerates the topic and key if you think it leaked.
+- The Android app additionally asks for **camera** (QR scanning only) and **exact alarms** (so reset alerts fire on time).
+
+Full text: [DISCLAIMER.md](DISCLAIMER.md) · [Privacy policy](https://nohseongmin.github.io/Refuel/privacy.html)
+
+---
+
+## 🛠 Build from source
+
+**Windows app:**
+
+```bash
+pip install -r requirements.txt pyinstaller
+python -m PyInstaller --noconfirm --onefile --windowed --name Refuel ^
+  --collect-all pystray --collect-all PIL --collect-all winotify --collect-all qrcode run.py
+```
+
+Or just run it directly:
+
+```bash
+python run.py
+```
+
+**Android app** (needs JDK 17 + Android SDK):
+
+```bash
+cd android-app
+npm install
+powershell -ExecutionPolicy Bypass -File build-release.ps1
+```
+
+Signing paths come from `JAVA_HOME` / `ANDROID_HOME` / `REFUEL_KEYSTORE`, so no machine-specific paths are baked into the repo.
+
+---
+
+## 🧱 How it works
+
+```
+~/.claude/projects/**/*.jsonl        ← agent logs (read-only)
+        │
+        ▼
+  refuel/core.py     parse → 5-hour window blocks → limit estimate → grass
+        │
+        ├── refuel/app.py    Tk tray app (Windows)
+        │
+        └── refuel/sync.py   AES-GCM encrypt → ntfy relay (opt-in)
+                                    │
+                                    ▼
+                            docs/index.html    phone dashboard (PWA / Capacitor)
+```
+
+The 5-hour window is anchored to **the moment you sent the message**, not when the reply finished — otherwise a slow first response pushes the whole reset estimate late.
+
+---
+
+## ❓ FAQ
+
+**Does it show my exact plan limit?**
+No, and nothing can — Anthropic doesn't publish a token quota. Refuel estimates your ceiling from the largest completed window it has actually seen on your account, which is why the percentage becomes meaningful only after you've bumped into the limit once.
+
+**Do alerts arrive when my PC is off?**
+Yes. Your phone schedules the alert locally the last time it synced, so the PC doesn't need to be awake. Turn on **exact alarms** in the app's diagnostics, and set the battery mode to unrestricted — aggressive power saving on some devices kills scheduled alerts.
+
+**Does it work with agents other than Claude Code?**
+Codex support is experimental. Adding another agent is a small entry in the `AGENTS` registry in `refuel/core.py` — PRs welcome.
+
+**Is it on the Play Store?**
+No. Install the APK from the releases page.
+
+---
+
+## 📄 License
+
+MIT — see [LICENSE](LICENSE).
+
+Refuel is an unofficial tool and is not affiliated with Anthropic, OpenAI, Cursor, or any other company.
