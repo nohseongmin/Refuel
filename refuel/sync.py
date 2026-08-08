@@ -172,7 +172,9 @@ def _compact(state):
             "daily": [[d.isoformat(), v] for d, v in a.get("daily", [])],
             "streak": a.get("streak"),
         })
-    return {"v": 1, "ts": int(datetime.now().timestamp()), "agents": agents}
+    # accent: 폰이 PC와 같은 테마색을 쓰도록 함께 보낸다(파생색은 폰이 직접 계산).
+    return {"v": 1, "ts": int(datetime.now().timestamp()),
+            "accent": core.CONFIG.get("accent"), "agents": agents}
 
 
 def post_state(state):
@@ -184,7 +186,8 @@ def post_state(state):
                 (a["block"]["start"].isoformat() if a["block"] else None),
                 int((a["block"]["ratio"] or 0) * 10) if a["block"] else -1)
                for a in state.get("agents", [])]
-    sig = json.dumps(sig_src, default=str)
+    # 색을 바꾼 것도 '변화'로 쳐야 폰 테마가 바로 따라온다(안 그러면 하트비트까지 최대 10분).
+    sig = json.dumps([core.CONFIG.get("accent"), sig_src], default=str)
     if sig == _last_post["sig"] and (now - _last_post["ts"]) < HEARTBEAT_SEC:
         return
     if not _HAVE_AES:

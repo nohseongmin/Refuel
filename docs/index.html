@@ -55,6 +55,37 @@ a{color:var(--blu)}
 <div id="root"></div>
 <script src="jsqr.min.js"></script>
 <script>
+// ---- 테마: 강조색 하나로 앱 전체 색을 만든다(PC의 theme()와 같은 계산식) ----
+// 색상(hue)은 고정하고 밝기·채도로 의미를 구분한다 → 파랑을 고르면 경고·위험·잔디까지 파랑.
+const ACC_DEFAULT='#49df94';
+function hueOf(hex){
+ const m=/^#?([0-9a-f]{6})$/i.exec(String(hex)||'');
+ if(!m)return hueOf(ACC_DEFAULT);
+ const n=parseInt(m[1],16), r=(n>>16&255)/255, g=(n>>8&255)/255, b=(n&255)/255;
+ const mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn;
+ if(!d)return 0;
+ let h; if(mx===r)h=((g-b)/d)%6; else if(mx===g)h=(b-r)/d+2; else h=(r-g)/d+4;
+ return ((h*60)%360+360)%360/360;
+}
+function shade(h,l,s){                       // HSL -> #rrggbb (PC colorsys.hls_to_rgb 와 동일)
+ const f=n=>{const k=(n+h*12)%12, a=s*Math.min(l,1-l);
+  return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1))));};
+ return '#'+[f(0),f(8),f(4)].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+function applyTheme(acc){
+ acc=/^#?[0-9a-f]{6}$/i.test(String(acc)||'')?acc:ACC_DEFAULT;
+ if(applyTheme.last===acc)return; applyTheme.last=acc;
+ localStorage.rf_acc=acc;
+ const h=hueOf(acc), r=document.documentElement.style;
+ r.setProperty('--acc',acc);
+ r.setProperty('--warn',shade(h,0.70,0.90));
+ r.setProperty('--dng',shade(h,0.82,1.00));
+ r.setProperty('--blu',shade(h,0.45,0.60));
+ r.setProperty('--g0',shade(h,0.11,0.15));
+ for(let i=0;i<5;i++)r.setProperty('--g'+(i+1),shade(h,0.22+i*0.10,0.40+i*0.12));
+}
+applyTheme(localStorage.rf_acc||ACC_DEFAULT);   // PC 상태를 받기 전에도 저장된 색으로 먼저 칠한다
+
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
@@ -73,7 +104,7 @@ function demoState(){
  const N=112, from=new Date(base);from.setDate(from.getDate()-(N-1));
  let lv='';                       // 샘플 잔디: 초반은 듬성듬성, 최근 12일은 진하게 연속
  for(let i=0;i<N;i++)lv+= i>=N-12 ? String(3+(i%3)) : (i%3===0?'0':String(1+(i%5)));
- return {ts:now, total_events:1287, agents:[{
+ return {ts:now, total_events:1287, accent:localStorage.rf_acc||ACC_DEFAULT, agents:[{
   id:'claude-code', name:'Claude Code', today:20450000, week:174000000,
   block:{reset:now+2*3600+15*60+30, tok:3585015, ratio:0.45},
   wk:{reset:now+3*day+4*3600, ratio:0.62}, daily,
@@ -460,7 +491,8 @@ async function poll(){
   for(let i=lines.length-1;i>=0;i--){
    try{
     const m=JSON.parse(lines[i]);
-    if(m.event==='message'){state=await decrypt(m.message);lastFetch=Date.now();break}
+    if(m.event==='message'){state=await decrypt(m.message);lastFetch=Date.now();
+     applyTheme(state.accent);break}
    }catch(e){bad++/* 복호화 실패(위조/구버전) → 무시 */}
   }
   if(bad&&!pollState.badLogged){rlog('warn','복호화 실패 메시지 '+bad+'건 무시(키 불일치 또는 구버전). 재페어링 필요할 수 있음');pollState.badLogged=true}

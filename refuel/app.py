@@ -11,6 +11,7 @@ import logging
 import queue
 import json
 import re
+import colorsys
 import urllib.request
 import tkinter as tk
 import tkinter.font as tkfont
@@ -45,11 +46,49 @@ BORDER = "#252c3a"
 TRACK = "#0a0c11"
 TX = "#e7eaf0"
 MUT = "#8a93a4"
-WARN = "#f5c451"
-DNG = "#f3766b"
-BLU = "#5a8dee"
-# 잔디 5단계(연두→초록) + 안 쓴 날. 사용량이 5시간 한도 추정치의 몇 %인지에 비례.
-GRASS = ["#161b26", "#d9f99d", "#a3e635", "#65d64f", "#3aba48", "#1a9c3c"]
+
+# ---------------- 테마 ----------------
+# 강조색 하나에서 앱의 모든 색을 만든다. 색상(hue)은 고정하고 밝기·채도로 의미를 구분해서,
+# 파랑을 고르면 경고·위험·잔디까지 전부 파랑 계열이 된다. 배경/글자(중립색)와 앱 아이콘은 제외.
+ACCENT_HUES = [150, 205, 45, 5, 275, 320]   # 초록·파랑·노랑·빨강·보라·분홍
+_ACCENT_L, _ACCENT_S = 0.58, 0.70           # 어느 색을 골라도 밝기가 같아야 파생색이 일관된다
+
+
+def _shade(hue, light, sat):
+    r, g, b = colorsys.hls_to_rgb(hue, light, sat)
+    return "#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255))
+
+
+def _hue_of(hex_color):
+    try:
+        h = hex_color.lstrip("#")
+        rgb = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+        return colorsys.rgb_to_hls(*rgb)[0]
+    except Exception:
+        return ACCENT_HUES[0] / 360.0
+
+
+SWATCHES = [_shade(h / 360.0, _ACCENT_L, _ACCENT_S) for h in ACCENT_HUES]
+_theme_cache = {}
+
+
+def theme():
+    """현재 강조색에서 파생된 색 묶음. 밝을수록 '강한' 신호(평소 < 임박 < 위험)."""
+    acc = core.CONFIG["accent"]
+    t = _theme_cache.get(acc)
+    if t is None:
+        hue = _hue_of(acc)
+        t = {
+            "acc": acc,
+            "warn": _shade(hue, 0.70, 0.90),    # 리셋 임박
+            "dng": _shade(hue, 0.82, 1.00),     # 한도 임박/도달
+            "bar": _shade(hue, 0.45, 0.60),     # 일별 막대
+            # 잔디: 안 쓴 날(거의 배경) → 많이 쓴 날(테마색)
+            "grass": [_shade(hue, 0.11, 0.15)] +
+                     [_shade(hue, 0.22 + i * 0.10, 0.40 + i * 0.12) for i in range(5)],
+        }
+        _theme_cache[acc] = t
+    return t
 
 F = "Malgun Gothic"   # __init__에서 자동선택으로 덮어씀
 REFRESH_SECONDS = 20
@@ -324,7 +363,7 @@ class AgentCard:
         legend = tk.Frame(d, bg=PANEL)
         legend.pack(anchor="w", padx=16, pady=(0, 12))
         _lbl(legend, "적음", size=8).pack(side="left", padx=(0, 4))
-        for c in GRASS[1:]:
+        for c in theme()["grass"][1:]:
             tk.Canvas(legend, width=9, height=9, bg=c,
                       highlightthickness=0).pack(side="left", padx=1)
         _lbl(legend, "많음 · 진할수록 한도까지 사용", size=8).pack(side="left", padx=(4, 0))
@@ -397,6 +436,7 @@ class AgentCard:
         """
         self._streak_data = streak
         self.grass.delete("all")
+        g = theme()["grass"]
         levels = (streak or {}).get("levels") or ""
         if not levels:
             return
@@ -414,7 +454,7 @@ class AgentCard:
         for i, ch in enumerate(levels):
             col, row = divmod(i + pad, 7)
             x, y = col * cell, row * cell
-            fill = GRASS[int(ch)] if ch.isdigit() and int(ch) < len(GRASS) else GRASS[0]
+            fill = g[int(ch)] if ch.isdigit() and int(ch) < len(g) else g[0]
             self.grass.create_rectangle(x, y, x + size, y + size, fill=fill, width=0)
 
     def _render_daily(self, daily):
@@ -434,7 +474,7 @@ class AgentCard:
             tr.pack(side="left", fill="x", expand=True, padx=8)
             tr.update_idletasks()
             tw = max(tr.winfo_width(), 1)
-            col = self.app.accent() if d == today else BLU
+            col = self.app.accent() if d == today else theme()["bar"]
             tr.create_rectangle(0, 0, int(tw * (v / mx)), 7, fill=col, width=0)
 
     def _set_count(self, text, col):
@@ -450,23 +490,24 @@ class AgentCard:
         self.hbar.create_rectangle(0, 0, int(uw * min(1.0, ratio or 0)), 4, fill=col, width=0)
 
     def tick(self):
-        acc = self.app.accent()
+        th = theme()
+        acc = th["acc"]
         warn = core.CONFIG["warn_ratio"]
         self.dot.config(fg=acc)
-        self.wk.config(fg=DNG if (self.wk_ratio is not None and self.wk_ratio >= warn) else MUT)
+        self.wk.config(fg=th["dng"] if (self.wk_ratio is not None and self.wk_ratio >= warn) else MUT)
         now = datetime.now(timezone.utc).astimezone()
 
         if self.primary == "5h":
             rem = max(0, int((self.reset_at - now).total_seconds()))
             over = self.usage_ratio is not None and self.usage_ratio >= warn
-            col = DNG if over else (WARN if rem <= core.CONFIG["reset_soon_min"] * 60 else acc)
+            col = th["dng"] if over else (th["warn"] if rem <= core.CONFIG["reset_soon_min"] * 60 else acc)
             self._set_count(_fmt_dur(rem), col)
             self._set_bars((core.SESSION_WINDOW_SEC - rem) / core.SESSION_WINDOW_SEC, self.usage_ratio, col)
             return rem
         if self.primary == "weekly":
             rem = max(0, int((self.wk_reset - now).total_seconds())) if self.wk_reset else 0
-            self._set_count(_fmt_dur(rem), DNG)
-            self._set_bars(1 - rem / core.WEEKLY_WINDOW_SEC, self.wk_ratio, DNG)
+            self._set_count(_fmt_dur(rem), th["dng"])
+            self._set_bars(1 - rem / core.WEEKLY_WINDOW_SEC, self.wk_ratio, th["dng"])
             return rem
         self._set_count("충전완료", acc)
         self.bar.delete("all")
@@ -524,7 +565,8 @@ class RefuelApp:
         wrap.pack(fill="both", expand=True, padx=18, pady=16)
         top = tk.Frame(wrap, bg=BG)
         top.pack(fill="x", pady=(0, 12))
-        _lbl(top, "● Refuel", fg=self.accent(), size=13, bold=True, bg=BG).pack(side="left")
+        self.brand = _lbl(top, "● Refuel", fg=self.accent(), size=13, bold=True, bg=BG)
+        self.brand.pack(side="left")
         _btn(top, "⚙", self._open_settings, size=11).pack(side="right", padx=(8, 0))
         self.meta = _lbl(top, "", bg=BG)
         self.meta.pack(side="right")
@@ -617,6 +659,14 @@ class RefuelApp:
     def toggle(self, aid):
         self.expanded_id = None if self.expanded_id == aid else aid
         self._apply_expand()
+
+    def _apply_accent(self):
+        """색을 바꾸면 한 번만 그려지는 것들(브랜드·잔디 범례)이 옛 색으로 남는다 → 카드를 새로 만든다."""
+        self.brand.config(fg=self.accent())
+        for c in self.cards.values():
+            c.outer.destroy()
+        self.cards.clear()
+        self._card_order = []      # 다음 틱에 _reconcile 이 새 테마로 다시 만든다
 
     def _apply_expand(self):
         for c in self.cards.values():
@@ -725,7 +775,7 @@ class RefuelApp:
         accrow = tk.Frame(win, bg=BG)
         accrow.pack(anchor="w")
         acc_var = tk.StringVar(value=cfg["accent"])
-        for c in ["#46e08a", "#5a8dee", "#f5c451", "#f3766b", "#b388ff"]:
+        for c in SWATCHES:
             tk.Button(accrow, bg=c, width=2, bd=2, relief="flat",
                       command=lambda c=c: acc_var.set(c)).pack(side="left", padx=3, pady=4)
 
@@ -745,7 +795,9 @@ class RefuelApp:
             cfg["minimize_to_tray"] = tray_var.get()
             cfg["sync_enabled"] = sync_var.get()
             cfg["check_updates"] = upd_var.get()
-            cfg["accent"] = acc_var.get()
+            if acc_var.get() != cfg["accent"]:
+                cfg["accent"] = acc_var.get()
+                self._apply_accent()
             if auto_var.get() != cfg["autostart"]:
                 cfg["autostart"] = auto_var.get()
                 _set_autostart(cfg["autostart"])
@@ -769,7 +821,7 @@ class RefuelApp:
             tk.Label(win, image=self._qr_photo, bg="white").pack(pady=10)
         except Exception as e:
             log.warning("QR 생성 실패: %s", e)
-            _lbl(win, "(QR 모듈 없음 - 아래 링크를 직접 열기)", fg=WARN, bg=BG).pack(pady=6)
+            _lbl(win, "(QR 모듈 없음 - 아래 링크를 직접 열기)", fg=theme()["warn"], bg=BG).pack(pady=6)
         _readonly(win, url, size=8).pack(fill="x", ipady=3)
         _lbl(win, "2) 푸시 알림: 폰에 ntfy 앱 설치 후 아래 토픽 구독",
              fg=TX, size=10, bg=BG).pack(anchor="w", pady=(12, 2))
@@ -784,7 +836,7 @@ class RefuelApp:
             _notify("페어링 재발급", "이전 QR·토픽은 무효화됨. 폰에서 다시 스캔해줘.")
 
         _btn(win, "토픽·키 재발급 (유출 의심 시)", rotate,
-             fg=WARN).pack(anchor="w", pady=(10, 0), ipadx=8, ipady=3)
+             fg=theme()["warn"]).pack(anchor="w", pady=(10, 0), ipadx=8, ipady=3)
 
     # ---------- 트레이 / 종료 ----------
     def _on_close(self):
