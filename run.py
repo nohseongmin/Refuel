@@ -1,4 +1,4 @@
-"""Refuel 진입점."""
+"""Refuel entry point."""
 from refuel.app import main
 
 if __name__ == "__main__":

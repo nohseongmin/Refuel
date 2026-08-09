@@ -1,8 +1,8 @@
-# 런타임 (없어도 핵심 동작 - 트레이/토스트만 비활성)
+# Runtime extras. Refuel still works without them; only the tray icon and toasts go away.
 pystray>=0.19
 pillow>=10.0
 winotify>=1.1.0
 qrcode>=7.0
 cryptography>=42.0
 
-# 빌드용(개발): pip install pyinstaller
+# For building: pip install pyinstaller

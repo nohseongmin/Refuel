@@ -1,12 +1,14 @@
-﻿# Refuel Android 릴리스 빌드 (원스톱)
+﻿# Refuel Android release build, including signing.
 #
-# ⚠️ 함정 주의: docs/ 를 고친 뒤 gradle 만 돌리면 옛 화면이 그대로 들어간다.
-#    Capacitor 는 `cap copy` 를 해야 www -> android/app/src/main/assets/public 로 복사되기 때문.
-#    이 스크립트는 그 순서를 강제하고, 결과물에 최신 코드가 들어갔는지 검증까지 한다.
+# Careful: editing docs/ then running gradle alone leaves the old screen inside the APK.
+#          Capacitor only copies www to android/app/src/main/assets/public on `cap copy`.
+#          This script enforces that order and verifies the packaged APK really has the
+#          latest code before reporting success.
 #
-# 사용법:  powershell -ExecutionPolicy Bypass -File build-release.ps1
+# Usage:  powershell -ExecutionPolicy Bypass -File build-release.ps1
 #
-# 경로는 환경변수로 바꿀 수 있고, 없으면 자동 탐지한다(머신마다 다르므로 고정하지 않는다):
+# Paths come from environment variables and fall back to auto-detection, so nothing
+# machine-specific is hard-coded:
 #   JAVA_HOME / ANDROID_HOME / REFUEL_KEYSTORE / REFUEL_KEYSTORE_SECRETS
 
 $ErrorActionPreference = "Stop"
@@ -20,7 +22,7 @@ if (-not $JDK -or -not (Test-Path "$JDK\bin\jarsigner.exe")) {
            Select-Object -First 1 -ExpandProperty FullName
 }
 if (-not $JDK -or -not (Test-Path "$JDK\bin\jarsigner.exe")) {
-    throw "JDK 17을 찾지 못했습니다. JAVA_HOME을 설정하세요."
+    throw "Could not find JDK 17. Set JAVA_HOME."
 }
 $env:JAVA_HOME = $JDK
 $env:Path = "$JDK\bin;" + $env:Path
@@ -28,27 +30,27 @@ $env:Path = "$JDK\bin;" + $env:Path
 if (-not $env:ANDROID_HOME) { $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk" }
 $BT = Get-ChildItem "$env:ANDROID_HOME\build-tools" -Directory -ErrorAction SilentlyContinue |
       Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty FullName
-if (-not $BT) { throw "Android build-tools가 없습니다. ANDROID_HOME을 확인하세요." }
+if (-not $BT) { throw "Android build-tools not found. Check ANDROID_HOME." }
 
 $KS = $env:REFUEL_KEYSTORE
 if (-not $KS) { $KS = Join-Path $parent "android\android.keystore" }
 $SECRETS = $env:REFUEL_KEYSTORE_SECRETS
 if (-not $SECRETS) { $SECRETS = Join-Path $parent "android\keystore-secrets.txt" }
-if (-not (Test-Path $KS)) { throw "키스토어가 없습니다: $KS" }
-if (-not (Test-Path $SECRETS)) { throw "키스토어 비밀번호 파일이 없습니다: $SECRETS" }
+if (-not (Test-Path $KS)) { throw "Keystore not found: $KS" }
+if (-not (Test-Path $SECRETS)) { throw "Keystore password file not found: $SECRETS" }
 
-Write-Host "`n[1/5] 웹 자산 번들 (docs -> www)" -ForegroundColor Cyan
+Write-Host "`n[1/5] Bundling web assets (docs -> www)" -ForegroundColor Cyan
 Copy-Item "..\docs\*" www -Recurse -Force
 
-Write-Host "[2/5] Capacitor 동기화 (www -> android assets)" -ForegroundColor Cyan
+Write-Host "[2/5] Capacitor sync (www -> android assets)" -ForegroundColor Cyan
 npx cap copy android | Out-Null
 
-Write-Host "[3/5] Gradle 릴리스 빌드" -ForegroundColor Cyan
+Write-Host "[3/5] Gradle release build" -ForegroundColor Cyan
 Push-Location android
 & ".\gradlew.bat" bundleRelease assembleRelease --no-daemon | Select-Object -Last 3
 Pop-Location
 
-Write-Host "[4/5] 서명" -ForegroundColor Cyan
+Write-Host "[4/5] Signing" -ForegroundColor Cyan
 $sec = Get-Content $SECRETS | ConvertFrom-StringData
 $sp = $sec.KEYSTORE_PASSWORD
 $out = "android\app\build\outputs"
@@ -59,7 +61,7 @@ Copy-Item "$out\bundle\release\app-release.aab" ".\Refuel-admob.aab" -Force
 & "$BT\apksigner.bat" sign --ks $KS --ks-pass "pass:$sp" --key-pass "pass:$sp" `
     --ks-key-alias refuel "Refuel-admob.apk"
 
-Write-Host "[5/5] 검증 (최신 코드가 실제로 들어갔는지)" -ForegroundColor Cyan
+Write-Host "[5/5] Verifying the packaged code is current" -ForegroundColor Cyan
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead("$root\Refuel-admob.apk")
 $entry = $zip.Entries | Where-Object { $_.FullName -eq "assets/public/index.html" }
@@ -67,18 +69,19 @@ $reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding
 $html = $reader.ReadToEnd(); $reader.Close(); $zip.Dispose()
 
 $checks = @{
-    "진단 로그(rlog)" = $html.Contains("function rlog")
-    "로그 UI(logbox)" = $html.Contains("logbox")
-    "AdMob 배너"      = $html.Contains("showBanner")
-    "데모 모드"       = $html.Contains("demoState")
-    "앱 내 QR 스캐너" = $html.Contains("function startScan")
-    "잔디/연속기록"   = $html.Contains("function grassHTML")
-    "알림 진단/자체테스트" = $html.Contains("function selfTest")
-    "PC 알림 수신"    = $html.Contains("function pollAlerts")
+    "diagnostic log (rlog)" = $html.Contains("function rlog")
+    "log UI (logbox)"      = $html.Contains("logbox")
+    "AdMob banner"         = $html.Contains("showBanner")
+    "demo mode"            = $html.Contains("demoState")
+    "in-app QR scanner"    = $html.Contains("function startScan")
+    "grass and streaks"    = $html.Contains("function grassHTML")
+    "alert diagnostics"    = $html.Contains("function selfTest")
+    "PC alert receiving"   = $html.Contains("function pollAlerts")
 }
-# 정확 알람 권한이 빠지면 안드로이드 12+에서 리셋 알림이 조용히 밀린다 → 빌드 단계에서 막는다
+# Without the exact-alarm permission, Android 12+ silently delays reset alerts, so the
+# build fails here rather than shipping it.
 $perm = & "$BT\aapt2.exe" dump badging "Refuel-admob.apk" 2>$null | Select-String "SCHEDULE_EXACT_ALARM"
-$checks["정확 알람 권한"] = [bool]$perm
+$checks["exact alarm permission"] = [bool]$perm
 $fail = $false
 foreach ($k in $checks.Keys) {
     if ($checks[$k]) { Write-Host "  OK   $k" -ForegroundColor Green }
@@ -86,7 +89,7 @@ foreach ($k in $checks.Keys) {
 }
 & "$BT\aapt2.exe" dump badging "Refuel-admob.apk" 2>$null | Select-String "targetSdkVersion"
 
-if ($fail) { Write-Host "`n검증 실패 - APK에 최신 코드가 없습니다." -ForegroundColor Red; exit 1 }
+if ($fail) { Write-Host "`nVerification failed. The APK does not contain the latest code." -ForegroundColor Red; exit 1 }
 Get-ChildItem Refuel-admob.aab, Refuel-admob.apk |
     ForEach-Object { "{0,-20} {1,8:N2} MB" -f $_.Name, ($_.Length / 1MB) }
-Write-Host "`n빌드 완료. Play 업로드=Refuel-admob.aab / 폰 테스트=Refuel-admob.apk" -ForegroundColor Green
+Write-Host "`nBuild complete. Store bundle: Refuel-admob.aab / sideload: Refuel-admob.apk" -ForegroundColor Green

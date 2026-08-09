@@ -1,7 +1,8 @@
-"""Refuel core - 에이전트 로그 자동탐지/파싱, 5시간 윈도우 계산, 설정/히스토리.
+"""Refuel core: agent log discovery and parsing, 5-hour window maths, config and history.
 
-순수 로직(GUI 분리). 외부 의존성 없음(표준 라이브러리만).
-로컬 전용: 로그 읽기만 하고 네트워크 호출 없음. ~/.refuel 에 설정·히스토리·로그 저장.
+Pure logic with no GUI and no third-party dependencies, standard library only.
+Local only: it reads logs and makes no network calls. Config, history and logs live
+in ~/.refuel.
 """
 import json
 import glob
@@ -13,17 +14,17 @@ from collections import namedtuple
 from pathlib import Path
 from datetime import datetime, timedelta, timezone, date
 
-# ---------------- 경로 ----------------
+# ---------------- Paths ----------------
 CONFIG_DIR = Path.home() / ".refuel"
 CONFIG_PATH = CONFIG_DIR / "config.json"
 DB_PATH = CONFIG_DIR / "history.db"
 LOG_PATH = CONFIG_DIR / "refuel.log"
-SESSION_WINDOW = timedelta(hours=5)     # Claude 구독 5시간 롤링 윈도우
-SESSION_WINDOW_SEC = int(SESSION_WINDOW.total_seconds())   # 18000 — UI 진행바 계산용(윈도우와 항상 일치)
-WEEKLY_WINDOW_SEC = 7 * 24 * 3600        # 주간 윈도우 길이(초)
-GRASS_DAYS = 112                         # 잔디 길이(16주) — 폰 카드 폭에 맞춘 값
-GRASS_LEVELS = 5                         # 잔디 진하기 단계(연두→초록)
-SORT_LAST = 10 ** 9                      # 활성 블록 없는 에이전트를 정렬 맨 뒤로 보내는 센티넬
+SESSION_WINDOW = timedelta(hours=5)     # Claude subscription rolling 5-hour window
+SESSION_WINDOW_SEC = int(SESSION_WINDOW.total_seconds())   # 18000, drives the progress bar and always matches the window
+WEEKLY_WINDOW_SEC = 7 * 24 * 3600        # length of the weekly window in seconds
+GRASS_DAYS = 112                         # 16 weeks of grass, sized to fit the phone card
+GRASS_LEVELS = 5                         # shading steps from faint to full accent
+SORT_LAST = 10 ** 9                      # sentinel sorting agents without an active block to the end
 
 log = logging.getLogger("refuel")
 
@@ -39,7 +40,7 @@ def setup_logging():
         pass
 
 
-# ---------------- 설정 ----------------
+# ---------------- Settings ----------------
 DEFAULTS = {
     "warn_ratio": 0.8,
     "reset_soon_min": 30,
@@ -48,18 +49,18 @@ DEFAULTS = {
     "minimize_to_tray": True,
     "autostart": False,
     "accent": "#46e08a",
-    "sync_enabled": False,       # 폰 연동(베타): ntfy 릴레이로 상태/알림 전송
-    "sync_topic": "",            # 최초 활성화 시 랜덤 생성
-    "sync_key": "",              # E2E 암호화 키(hex, QR로만 전달)
-    "check_updates": True,       # GitHub 릴리스 새 버전 확인(읽기 전용, 하루 1회)
-    "sync_scheduled": {},        # 에이전트별 마지막 예약 블록(중복 예약 방지)
+    "sync_enabled": False,       # phone sync (beta): relays status and alerts through ntfy
+    "sync_topic": "",            # generated randomly the first time it is enabled
+    "sync_key": "",              # end-to-end encryption key in hex, shared only through the QR
+    "check_updates": True,       # checks GitHub releases once a day, read-only
+    "sync_scheduled": {},        # last scheduled block per agent, prevents duplicate pushes
     "sync_server": "https://ntfy.sh",
     "sync_app_url": "https://nohseongmin.github.io/Refuel/",
-    "consented": "",             # 동의한 면책조항 버전(빈 값이면 최초 실행 시 동의 요구)
+    "consented": "",             # accepted disclaimer version; empty means the dialog appears on first run
 }
 CONFIG = dict(DEFAULTS)
 
-# 면책조항 버전 — 내용이 바뀌면 올려서 재동의를 받는다.
+# Bump this when the disclaimer text changes materially, to ask for agreement again.
 DISCLAIMER_VERSION = "1"
 DISCLAIMER_TEXT = (
     "Refuel is an unofficial tool and is not affiliated with Anthropic, OpenAI, "
@@ -103,7 +104,7 @@ def save_config():
         log.warning("config save failed: %s", e)
 
 
-# ---------------- 히스토리(SQLite) ----------------
+# ---------------- History (SQLite) ----------------
 def _db():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(DB_PATH, timeout=3)
@@ -114,7 +115,8 @@ def _db():
 
 
 def _persist_daily(agent, rows):
-    """rows: {date: (tok, inp, out, cache)}. 같은 날은 더 큰 값으로 갱신(단조 증가)."""
+    """rows: {date: (tok, inp, out, cache)}. A repeated day keeps the larger value, so
+    totals only ever grow."""
     try:
         con = _db()
         con.executemany(
@@ -140,7 +142,7 @@ def _history_daily(agent):
         return {}
 
 
-# ---------------- 에이전트 로그 위치 자동탐지 ----------------
+# ---------------- Agent log discovery ----------------
 def _existing(paths):
     out, seen = [], set()
     for c in paths:
@@ -175,12 +177,13 @@ def codex_dirs():
     return _existing(cands)
 
 
-# ---------------- 파싱 ----------------
+# ---------------- Parsing ----------------
 _cache = {}  # path -> ((mtime, size), [events])
 
 
 def _parse_iso_utc(ts):
-    """ISO8601 문자열 → UTC-aware datetime. 파싱 실패/빈값이면 None. tz 없으면 UTC로 간주."""
+    """ISO 8601 string to a UTC-aware datetime. None if empty or unparseable.
+    A missing timezone is treated as UTC."""
     try:
         dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
     except (ValueError, TypeError):
@@ -194,7 +197,7 @@ _TS_RE = re.compile(r'"timestamp"\s*:\s*"([^"]+)"')
 
 
 def _event(ts, agent, inp=0, out=0, cache=0, eid=None):
-    """이벤트 1건. total은 항상 세 값의 합이라는 규칙을 여기 한 곳에만 둔다."""
+    """One event. The rule that total is the sum of the three counts lives only here."""
     return {"ts": ts, "agent": agent, "inp": inp, "out": out, "cache": cache,
             "total": inp + out + cache, "id": eid}
 
@@ -205,9 +208,9 @@ def _parse_claude_file(path, agent):
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 if '"usage"' not in line:
-                    # 5시간 창은 '내가 보낸 순간' 시작한다. 어시스턴트 응답 시각만 쓰면
-                    # 응답이 오래 걸릴수록 리셋 추정이 그만큼 밀리므로,
-                    # 사용자 메시지도 토큰 0짜리 활동으로 기록해 창 시작을 정확히 잡는다.
+                    # The 5-hour window starts the moment you send the message. Anchoring on the
+                    # assistant reply pushes the reset estimate later the slower the reply is,
+                    # so user messages are recorded as zero-token activity to pin the start.
                     if '"type":"user"' in line:
                         m = _TS_RE.search(line)
                         dt = _parse_iso_utc(m.group(1)) if m else None
@@ -237,7 +240,8 @@ def _parse_claude_file(path, agent):
 
 
 def _parse_codex_file(path, agent):
-    """Codex CLI rollout JSONL의 last_token_usage(턴별 증분)만 합산. 실험적·미검증."""
+    """Sums only last_token_usage, the per-turn delta, from Codex CLI rollout JSONL.
+    Experimental and unverified."""
     events = []
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -265,11 +269,11 @@ def _parse_codex_file(path, agent):
     return events
 
 
-# 에이전트 레지스트리: 새 에이전트는 (dirs, glob, parser) 만 추가하면 자동 발견됨.
+# Agent registry. A new agent needs only dirs, glob and parser to be discovered.
 AGENTS = {
     "claude-code": {"name": "Claude Code", "dirs": claude_dirs, "glob": "**/*.jsonl",
                     "parser": _parse_claude_file},
-    "codex": {"name": "Codex (experimental)", "dirs": codex_dirs, "glob": "**/*.jsonl",
+    "codex": {"name": "Codex", "dirs": codex_dirs, "glob": "**/*.jsonl",
               "parser": _parse_codex_file},
 }
 
@@ -299,7 +303,8 @@ def _scan():
 
 
 def _compute_blocks(events):
-    """5시간 윈도우 블록 분할. 블록 시작 = 첫 메시지 시각(정시 내림 안 함)."""
+    """Splits events into 5-hour window blocks. A block starts at its first message,
+    with no rounding to the hour."""
     blocks, cur = [], None
     for e in events:
         new = cur is None
@@ -329,7 +334,7 @@ def _last_weekly_reset(now_local, dow, hour):
 
 
 def _weekly_ceiling(agent, dow, today):
-    """과거 '완료된 주'들의 총 토큰 최댓값 = 주간 한도 추정(히스토리 기반)."""
+    """Largest total across past completed weeks, used as the weekly limit estimate."""
     hist = _history_daily(agent)
     if not hist:
         return 0
@@ -346,23 +351,24 @@ def _weekly_ceiling(agent, dow, today):
 
 
 def _day_level(tokens, full):
-    """잔디 한 칸의 진하기. 0=안 씀, 1~5=사용량 비례(연두→초록).
+    """Shade of one grass square. 0 means unused, 1 to 5 scale with usage.
 
-    full(5시간 한도 추정치)을 100%로 보고 5단계로 나눈다. 한도를 넘긴 날은 5.
-    추정치가 아직 없으면(이력 부족) 판단 근거가 없으니 1에 머문다.
+    The estimated 5-hour limit counts as 100% and is split into five steps. A day that
+    goes past the limit is 5. Without an estimate there is nothing to judge against,
+    so it stays at 1.
     """
     if tokens <= 0:
         return 0
     if not full:
         return 1
-    return min(GRASS_LEVELS, -(-tokens * GRASS_LEVELS // full))   # 올림 나눗셈
+    return min(GRASS_LEVELS, -(-tokens * GRASS_LEVELS // full))   # ceiling division
 
 
 def _streak(levels):
-    """levels: 과거→오늘 순 진하기 배열. (현재 연속일수, 최고 연속일수)를 반환.
+    """levels runs oldest to today. Returns the current and best streak.
 
-    오늘은 아직 안 썼을 수 있으므로, 오늘이 비었으면 어제까지로 현재 연속을 센다.
-    (하루가 끝나기도 전에 연속이 끊긴 것처럼 보이면 안 되니까)
+    Today may simply not have started yet, so an empty today counts back from
+    yesterday. Otherwise a streak would look broken halfway through the day.
     """
     best = run = 0
     for lv in levels:
@@ -381,7 +387,7 @@ _Clock = namedtuple("_Clock", "utc local today wk_reset wk_next")
 
 
 def _now_clock():
-    """'지금'을 한 번만 계산해 모든 에이전트가 같은 기준시각을 쓰게 한다."""
+    """Computes now once so every agent shares the same reference time."""
     utc = datetime.now(timezone.utc)
     local = utc.astimezone()
     wk_reset = _last_weekly_reset(local, CONFIG["weekly_reset_dow"], CONFIG["weekly_reset_hour"])
@@ -398,7 +404,7 @@ def _agent_breakdown(events, agent, clock):
             today_tok += e["total"]
         if e["ts"].astimezone() >= clock.wk_reset:
             week_tok += e["total"]
-        if d <= today:      # 잔디를 채우려면 로그에 있는 모든 날을 모은다(미래 날짜만 제외)
+        if d <= today:      # collect every day in the logs so the grass fills in, excluding future dates
             r = daily.setdefault(d, [0, 0, 0, 0])
             r[0] += e["total"]; r[1] += e["inp"]; r[2] += e["out"]; r[3] += e["cache"]
 
@@ -407,7 +413,8 @@ def _agent_breakdown(events, agent, clock):
     hist = _history_daily(agent)
 
     def day_tokens(d):
-        """그날 사용량 — 이번 스캔 결과와 저장된 이력 중 큰 값(로그가 지워져도 잔디는 남는다)."""
+        """Usage for a day: the larger of this scan and stored history, so the grass
+        survives log cleanup."""
         return max(daily.get(d, [0])[0], hist.get(d.isoformat(), 0))
 
     daily_list = [(today - timedelta(days=i), day_tokens(today - timedelta(days=i)))
@@ -431,8 +438,8 @@ def _agent_breakdown(events, agent, clock):
                 "remaining_sec": max(0, int((end - now).total_seconds())),
                 "ratio": (last["tokens"] / ceiling) if ceiling else None,
             }
-    # 잔디: 오늘로 끝나는 GRASS_DAYS일치 진하기를 한 글자씩 이어붙인 문자열("0112...").
-    # 날짜 배열 대신 문자열이라 폰으로 보내는 양이 1/10 이하다.
+    # Grass is GRASS_DAYS of shading ending today, packed one character per day such as
+    # "0112...". A string rather than an array of dates cuts the phone payload tenfold.
     grass_from = today - timedelta(days=GRASS_DAYS - 1)
     levels = [_day_level(day_tokens(grass_from + timedelta(days=i)), ceiling)
               for i in range(GRASS_DAYS)]
@@ -459,7 +466,7 @@ def _agent_breakdown(events, agent, clock):
 
 
 def build_state():
-    """에이전트별로 분리된 상태를 반환. datetime은 로컬 aware 객체."""
+    """Returns state split per agent. All datetimes are local and timezone-aware."""
     events, detected = _scan()
     clock = _now_clock()
 

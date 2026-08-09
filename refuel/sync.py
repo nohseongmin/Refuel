@@ -1,12 +1,19 @@
-"""Refuel phone sync - ntfy 릴레이로 폰에 상태/알림 전송 (선택 기능, 기본 OFF).
+"""Refuel phone sync: relays status and alerts to a phone through ntfy.
+Opt-in and off by default.
 
-- 서버 불필요: ntfy.sh(오픈소스 푸시 릴레이)의 비밀 토픽으로 POST만 한다.
-- 나가는 데이터 = 토큰 수·시각·에이전트명뿐 (코드/프롬프트 없음).
-- 토픽은 최초 1회 랜덤 생성(secrets) → 사실상 비밀 채널.
-  상태: <topic>-s (무음, 폰 대시보드가 폴링) / 알림: <topic>-a (푸시)
-- 상태 페이로드는 AES-GCM 종단간 암호화(키는 QR 프래그먼트로만 전달, 릴레이는 암호문만 봄).
-  GCM 인증 태그 덕에 위조 상태 주입도 차단된다. 알림 텍스트는 ntfy 앱 표시용이라 평문
-  (내용이 "재충전 완료" 수준이라 무해). 키/토픽은 rotate()로 재발급 가능.
+No server of our own is needed. It only POSTs to a secret topic on ntfy.sh, an
+open-source push relay. What leaves the machine is token counts, timestamps and
+agent names, never code or prompts.
+
+The topic is generated once from secrets, which makes it effectively private.
+Status goes to <topic>-s, polled silently by the phone dashboard, and alerts go to
+<topic>-a as pushes.
+
+The status payload is end-to-end encrypted with AES-GCM. The key travels only in the
+QR fragment, so the relay sees ciphertext alone, and the GCM tag blocks forged status
+injection. Alert text stays plaintext so the ntfy app can display it, which is
+harmless because it says no more than "refueled". Key and topic can be reissued with
+rotate().
 """
 import base64
 import json
@@ -27,7 +34,7 @@ except Exception:
     _HAVE_AES = False
 
 _last_post = {"ts": 0.0, "sig": None}
-HEARTBEAT_SEC = 600          # 변화 없어도 10분마다 상태 갱신(ntfy.sh 일일 한도 고려)
+HEARTBEAT_SEC = 600          # refresh every 10 minutes even without changes, mindful of ntfy.sh daily limits
 
 
 def enabled():
@@ -39,7 +46,7 @@ def server():
 
 
 def topic():
-    """비밀 토픽(최초 1회 생성 후 config에 고정)."""
+    """Secret topic, generated once and then fixed in config."""
     t = core.CONFIG.get("sync_topic")
     if not t:
         t = "refuel-" + secrets.token_urlsafe(24).replace("_", "").replace("-", "")[:28]
@@ -49,7 +56,7 @@ def topic():
 
 
 def key():
-    """E2E 암호화 키(128bit hex). 최초 1회 생성 후 config에 고정."""
+    """End-to-end encryption key, 128-bit hex, generated once and then fixed in config."""
     k = core.CONFIG.get("sync_key")
     if not k:
         k = secrets.token_hex(16)
@@ -59,7 +66,7 @@ def key():
 
 
 def rotate():
-    """토픽+키 재발급 — 기존 페어링/구독 전부 무효화."""
+    """Reissues topic and key, invalidating every existing pairing and subscription."""
     core.CONFIG["sync_topic"] = ""
     core.CONFIG["sync_key"] = ""
     core.save_config()
@@ -75,7 +82,8 @@ def _encrypt(obj):
 
 
 def pair_url():
-    """폰이 QR로 여는 대시보드 URL. 토픽·키는 #프래그먼트라 서버로 전송되지 않음."""
+    """Dashboard URL the phone opens from the QR. Topic and key sit in the # fragment,
+    which browsers never send to a server."""
     base = core.CONFIG.get("sync_app_url") or "https://nohseongmin.github.io/Refuel/"
     sv = server()
     extra = "" if sv == "https://ntfy.sh" else f"&sv={sv}"
@@ -83,7 +91,7 @@ def pair_url():
 
 
 def _post_json(payload):
-    """ntfy JSON publish (UTF-8 제목/본문 안전)."""
+    """ntfy JSON publish, which handles UTF-8 titles and bodies safely."""
     req = urllib.request.Request(
         server(), data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"}, method="POST")
@@ -100,15 +108,15 @@ def _fire(payload):
     threading.Thread(target=run, daemon=True).start()
 
 
-LIVE_TAG = "refuel-live"   # '지금 보내는' 알림 표식. 폰 앱은 이것만 띄운다.
+LIVE_TAG = "refuel-live"   # marks a live alert; the phone app shows only these
 
 
 def post_alert(title, msg):
-    """지금 발생한 알림을 폰 푸시 토픽으로 (비동기).
+    """Sends an alert that just happened to the phone push topic, asynchronously.
 
-    폰 앱은 이 토픽을 폴링해 LIVE_TAG가 붙은 것만 띄운다.
-    예약 발송(schedule_refill)에는 이 표식을 붙이지 않는다 — 리셋 알림은
-    폰이 스스로 예약해 울리므로, 여기까지 띄우면 두 번 울린다.
+    The phone polls this topic and shows only messages carrying LIVE_TAG. Pre-scheduled
+    pushes from schedule_refill deliberately omit the tag, because the phone already
+    schedules reset alerts locally and would otherwise ring twice.
     """
     if not enabled():
         return
@@ -116,32 +124,37 @@ def post_alert(title, msg):
            "priority": 4, "tags": ["zap", LIVE_TAG]})
 
 
-SCHEDULE_TOL = 15 * 60   # 같은 리셋으로 간주하는 허용 오차(초). 재예약=중복 푸시 방지
+# Two resets within this many seconds count as the same window, so a reschedule never
+# becomes a duplicate push.
+SCHEDULE_TOL = 15 * 60
 
 
 def schedule_refill(agent_id, name, block_start, reset_at):
-    """'재충전 완료' 푸시를 리셋 시각으로 ntfy 서버에 예약해 PC가 꺼져도 도착하게 한다.
+    """Pre-schedules the refuel push on ntfy for the reset time, so it arrives with the
+    PC off.
 
-    ntfy 예약은 취소가 불가능하므로 한 윈도우당 반드시 1건만 보낸다.
-    중복 방지: 저장된 예약 리셋시각과 ±15분 이내면 같은 윈도우로 보고 재예약하지 않는다.
-    (블록 시작 시각이 스캔/버전 간 미세하게 달라져도 같은 윈도우는 한 번만 나가게 됨)
+    An ntfy schedule cannot be cancelled, so exactly one is sent per window. Anything
+    within 15 minutes of a stored reset counts as the same window and is not
+    rescheduled, which holds it to one push even when the block start shifts slightly
+    between scans or versions.
     """
     if not enabled():
         return
     reset_epoch = int(reset_at.timestamp())
-    if reset_epoch - int(datetime.now().timestamp()) < 60:   # 임박 블록은 라이브 경로에 맡김
+    if reset_epoch - int(datetime.now().timestamp()) < 60:   # imminent resets are left to the live path
         return
     sched = core.CONFIG.get("sync_scheduled") or {}
     prev = sched.get(agent_id)
     if isinstance(prev, str):
-        # 이전 버전 형식(블록시작 문자열) → 이미 예약된 것으로 간주하고 조용히 이관(중복 방지)
+        # The older format stored the block start as a string. Treat it as already
+        # scheduled and migrate quietly, so nothing goes out twice.
         sched[agent_id] = reset_epoch
         core.CONFIG["sync_scheduled"] = sched
         core.save_config()
         log.info("migrated legacy schedule format (not rescheduling): %s", name)
         return
     if isinstance(prev, (int, float)) and abs(reset_epoch - prev) < SCHEDULE_TOL:
-        return   # 같은 윈도우에 이미 예약됨
+        return   # already scheduled for this window
     sched[agent_id] = reset_epoch
     core.CONFIG["sync_scheduled"] = sched
     core.save_config()
@@ -172,13 +185,13 @@ def _compact(state):
             "daily": [[d.isoformat(), v] for d, v in a.get("daily", [])],
             "streak": a.get("streak"),
         })
-    # accent: 폰이 PC와 같은 테마색을 쓰도록 함께 보낸다(파생색은 폰이 직접 계산).
+    # accent travels along so the phone matches the PC theme; it derives the shades itself
     return {"v": 1, "ts": int(datetime.now().timestamp()),
             "accent": core.CONFIG.get("accent"), "agents": agents}
 
 
 def post_state(state):
-    """상태를 무음 토픽으로. 의미 변화 또는 하트비트 주기에만 전송."""
+    """Publishes status to the silent topic, only on a meaningful change or the heartbeat."""
     if not enabled():
         return
     now = datetime.now().timestamp()
@@ -186,7 +199,7 @@ def post_state(state):
                 (a["block"]["start"].isoformat() if a["block"] else None),
                 int((a["block"]["ratio"] or 0) * 10) if a["block"] else -1)
                for a in state.get("agents", [])]
-    # 색을 바꾼 것도 '변화'로 쳐야 폰 테마가 바로 따라온다(안 그러면 하트비트까지 최대 10분).
+    # Count a colour change as a change too, or the phone theme lags until the next heartbeat.
     sig = json.dumps([core.CONFIG.get("accent"), sig_src], default=str)
     if sig == _last_post["sig"] and (now - _last_post["ts"]) < HEARTBEAT_SEC:
         return

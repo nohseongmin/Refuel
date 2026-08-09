@@ -11,7 +11,7 @@
 <style>
 :root{--bg:#0d0f14;--panel:#141821;--card:#11151d;--bd:#252c3a;--track:#0a0c11;
 --tx:#e7eaf0;--mut:#8a93a4;--acc:#46e08a;--warn:#f5c451;--dng:#f3766b;--blu:#5a8dee;
-/* 잔디 5단계(연두→초록) — 사용량이 5시간 한도 추정치의 몇 %인지에 비례 */
+/* Five grass shades, scaled by usage against the estimated 5-hour limit */
 --g0:#161b26;--g1:#d9f99d;--g2:#a3e635;--g3:#65d64f;--g4:#3aba48;--g5:#1a9c3c}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -33,7 +33,7 @@ padding:max(16px,env(safe-area-inset-top)) 16px 32px}
 .drow .dv{width:44px;text-align:right;color:var(--mut);font-family:Consolas,monospace}
 .streak{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:13px;font-weight:700;color:var(--acc)}
 .streak .off{color:var(--mut);font-weight:400}
-/* 카드 폭을 꽉 채운다(칸 크기는 폭에서 자동). 넓은 화면에서만 상한을 둔다 */
+/* Fills the card width, with cell size following from it. Capped on wide screens. */
 .grass{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,1fr);
 grid-auto-columns:minmax(0,1fr);gap:2px;margin-top:6px;width:100%;max-width:520px}
 .grass i{aspect-ratio:1;border-radius:2px;background:var(--g0)}
@@ -55,8 +55,9 @@ a{color:var(--blu)}
 <div id="root"></div>
 <script src="jsqr.min.js"></script>
 <script>
-// ---- 테마: 강조색 하나로 앱 전체 색을 만든다(PC의 theme()와 같은 계산식) ----
-// 색상(hue)은 고정하고 밝기·채도로 의미를 구분한다 → 파랑을 고르면 경고·위험·잔디까지 파랑.
+// ---- Theme: every colour comes from one accent, matching theme() on the PC ----
+// The hue stays fixed and meaning is carried by lightness and saturation, so picking
+// blue turns warnings, danger and the grass blue too.
 const ACC_DEFAULT='#49df94';
 function hueOf(hex){
  const m=/^#?([0-9a-f]{6})$/i.exec(String(hex)||'');
@@ -67,7 +68,7 @@ function hueOf(hex){
  let h; if(mx===r)h=((g-b)/d)%6; else if(mx===g)h=(b-r)/d+2; else h=(r-g)/d+4;
  return ((h*60)%360+360)%360/360;
 }
-function shade(h,l,s){                       // HSL -> #rrggbb (PC colorsys.hls_to_rgb 와 동일)
+function shade(h,l,s){                       // HSL -> #rrggbb, same maths as colorsys.hls_to_rgb on the PC
  const f=n=>{const k=(n+h*12)%12, a=s*Math.min(l,1-l);
   return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1))));};
  return '#'+[f(0),f(8),f(4)].map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -84,7 +85,7 @@ function applyTheme(acc){
  r.setProperty('--g0',shade(h,0.11,0.15));
  for(let i=0;i<5;i++)r.setProperty('--g'+(i+1),shade(h,0.22+i*0.10,0.40+i*0.12));
 }
-applyTheme(localStorage.rf_acc||ACC_DEFAULT);   // PC 상태를 받기 전에도 저장된 색으로 먼저 칠한다
+applyTheme(localStorage.rf_acc||ACC_DEFAULT);   // paint with the saved colour before any PC status arrives
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -93,7 +94,7 @@ const P=new URLSearchParams(location.hash.slice(1));
 if(P.get('t')){localStorage.rf_t=P.get('t');if(P.get('k'))localStorage.rf_k=P.get('k');
  if(P.get('sv'))localStorage.rf_sv=P.get('sv');history.replaceState(null,'',location.pathname);}
 const T=localStorage.rf_t, K=localStorage.rf_k, SV=localStorage.rf_sv||'https://ntfy.sh';
-const DEMO = P.get('demo')!==null;   // 명시적 #demo 일 때만 샘플. 미연결은 연결 화면.
+const DEMO = P.get('demo')!==null;   // sample data only on an explicit #demo; unpaired shows the connect screen
 const PAIRED = !!(T && K);
 let state=null, lastFetch=0, cryptoKey=null;
 function demoState(){
@@ -102,7 +103,7 @@ function demoState(){
  for(let i=6;i>=0;i--){const d=new Date(base);d.setDate(d.getDate()-i);
   daily.push([d.toISOString().slice(0,10), sampleM[6-i]*1e6]);}
  const N=112, from=new Date(base);from.setDate(from.getDate()-(N-1));
- let lv='';                       // 샘플 잔디: 초반은 듬성듬성, 최근 12일은 진하게 연속
+ let lv='';                       // sample grass: sparse early on, then 12 solid recent days
  for(let i=0;i<N;i++)lv+= i>=N-12 ? String(3+(i%3)) : (i%3===0?'0':String(1+(i%5)));
  return {ts:now, total_events:1287, accent:localStorage.rf_acc||ACC_DEFAULT, agents:[{
   id:'claude-code', name:'Claude Code', today:20450000, week:174000000,
@@ -111,10 +112,11 @@ function demoState(){
   streak:{current:12, best:23, from:from.toISOString().slice(0,10), levels:lv}}]};
 }
 
-// ---- 진단 로그 (유지보수용) ----
-// 보안: 토픽·암호화 키는 절대 기록하지 않는다(로그 공유 = 계정 탈취가 되면 안 됨).
+// ---- Diagnostic log ----
+// The topic and encryption key are never logged, so sharing a log cannot hand over
+// the channel.
 const LOG_MAX=300, LOG_KEY='rf_log';
-const pollState={ok:null,badLogged:false};   // 로그 스팸 방지(상태 전환 시에만 기록)
+const pollState={ok:null,badLogged:false};   // only log on a state change, to avoid spam
 let LOG=[];
 try{LOG=JSON.parse(localStorage.getItem(LOG_KEY)||'[]')}catch(e){LOG=[]}
 function rlog(level,msg){
@@ -143,7 +145,7 @@ window.addEventListener('error',e=>rlog('error','uncaught: '+(e.message||'')+' @
 window.addEventListener('unhandledrejection',e=>rlog('error','unhandled: '+((e.reason&&e.reason.message)||e.reason)));
 if(P.get('t'))rlog('info','QR pairing saved');
 
-// ---- 앱 내 QR 스캐너 (ntfy 앱 없이 바로 페어링) ----
+// ---- In-app QR scanner, so pairing needs no other app ----
 function applyPairing(text){
  const i=String(text).indexOf('#');
  const p=new URLSearchParams(i>=0?text.slice(i+1):'');
@@ -189,7 +191,7 @@ async function startScan(){
 const fmtN=v=>num(v).toLocaleString('en-US');
 const fmtS=v=>{v=num(v);return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?Math.round(v/1e3)+'K':''+v};
 const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-const WINDOW_SEC=18000, WEEK_SEC=7*86400; // 5시간 윈도우·주간 윈도우(초) — PC측 core.py와 동일
+const WINDOW_SEC=18000, WEEK_SEC=7*86400; // 5-hour and weekly windows in seconds, matching core.py on the PC
 function dur(s){if(s==null)return'--:--:--';s=Math.max(0,Math.floor(s));
  const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=s%60;
  const b=[h,m,x].map(v=>String(v).padStart(2,'0')).join(':');return d?d+'d '+b:b}
@@ -206,11 +208,12 @@ async function decrypt(msg){
  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:raw.slice(0,12)},key,raw.slice(12));
  return JSON.parse(new TextDecoder().decode(pt));
 }
-// 잔디 — PC가 보낸 "0112..." 문자열을 깃허브 잔디식 격자로. 열=주, 행=요일(월~일).
+// Grass: turns the "0112..." string from the PC into a GitHub-style grid.
+// Columns are weeks, rows are weekdays from Monday.
 function grassHTML(st){
  const lv=st&&st.levels;if(!lv)return'';
  const d0=new Date((st.from||'')+'T00:00:00');if(isNaN(d0))return'';
- const pad=(d0.getDay()+6)%7;                    // 첫 칸 요일에 맞춰 첫 열을 비운다
+ const pad=(d0.getDay()+6)%7;                    // blank the first column up to the starting weekday
  let cells='';
  for(let i=0;i<pad;i++)cells+='<i style="visibility:hidden"></i>';
  for(const c of lv)cells+=`<i class="l${Math.min(5,Math.max(0,Number(c)||0))}"></i>`;
@@ -219,7 +222,7 @@ function grassHTML(st){
  return `<div class="streak">${cur?`🔥 <span>${cur} day streak</span>`:'<span class="off">No active streak</span>'}
    <span class="off">· best ${best}</span></div>
   <div class="grass">${cells}</div>
-  <div class="legend">Less${sw}More · brighter = closer to the limit</div>`;
+  <div class="legend">Less${sw}More · brighter means closer to the limit</div>`;
 }
 function agentCardsHTML(agents){
  const now=Date.now()/1000;
@@ -248,7 +251,7 @@ function agentCardsHTML(agents){
    const dt=new Date(d[0]+'T00:00:00');
    const lbl=isNaN(dt)?'--':`${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')} ${WD[(dt.getDay()+6)%7]}`;
    return `<div class="drow"><div class="dl">${lbl}</div><div class="dt"><div class="df" style="width:${(d[1]/mx*100).toFixed(0)}%"></div></div><div class="dv">${fmtS(d[1])}</div></div>`}).join('');
-  // 잔디가 주인공 — 카운트다운 바로 밑에 카드 폭을 꽉 채워 놓고, 수치는 그 아래로.
+  // The grass is the centrepiece: full width right under the countdown, figures below.
   return `<div class="card"><div class="aname"><span>${name}</span></div>
    <div class="count" style="color:${col}" data-reset="${a.block?bReset:''}">${count}</div>
    ${grassHTML(a.streak)}
@@ -260,11 +263,11 @@ function agentCardsHTML(agents){
 function connectHTML(){
  return `<div class="setup"><b>Connect to your PC</b><br>
    Pair once with Refuel on your PC to see your token usage.<br><br>
-   1) Install and run <a href="https://github.com/nohseongmin/Refuel/releases/latest" target="_blank" rel="noopener noreferrer">Refuel for Windows</a><br>
-   2) On the PC, click ⚙ (top right) → <b>Pair with QR</b><br>
-   3) Scan that QR with the button below<br>
+   1. Install and run <a href="https://github.com/nohseongmin/Refuel/releases/latest" target="_blank" rel="noopener noreferrer">Refuel for Windows</a><br>
+   2. On the PC, click the gear icon and choose <b>Pair with QR</b><br>
+   3. Scan that QR with the button below<br>
    <button id="scanbtn" style="background:var(--acc);color:#0d0f14;border:0;font-weight:700;padding:14px;font-size:15px;width:100%;margin-top:8px">📷 Scan QR to connect</button>
-   <button id="demobtn" style="width:100%">Preview the app (demo)</button>
+   <button id="demobtn" style="width:100%">See a demo</button>
    <span style="color:var(--mut);font-size:11px;display:block;margin-top:8px">By using this app you agree to the <a href="https://github.com/nohseongmin/Refuel/blob/main/DISCLAIMER.md" target="_blank" rel="noopener noreferrer">disclaimer</a>.</span></div>`;
 }
 function wireCommon(){
@@ -284,11 +287,13 @@ function render(){
  r.innerHTML=agentCardsHTML(Array.isArray(state.agents)?state.agents:[]);
 }
 
-// ---- 로컬 알림 (폰이 직접 예약 → PC 꺼져도 리셋 시각에 울림, ntfy 앱 불필요) ----
+// ---- Local alerts. The phone schedules them itself, so they ring at reset time
+// even with the PC off, and no ntfy app is needed. ----
 const CH='refuel_reset';
 function nativeLN(){const C=window.Capacitor;return (C&&C.isNativePlatform&&C.isNativePlatform()&&C.Plugins&&C.Plugins.LocalNotifications)?C.Plugins.LocalNotifications:null;}
-// 채널은 소리/진동 설정이 바뀔 때만 다시 만든다. 채널을 지우면 그 채널로 이미 떠 있던
-// 알림까지 사라지므로, 매번 지웠다 만들면 보고 있던 리셋 알림이 지워질 수 있다.
+// Recreate the channel only when the sound or vibration setting changes. Deleting a
+// channel also clears alerts already shown through it, so rebuilding it every time
+// could wipe the reset alert the user is looking at.
 let chanSig='';
 async function ensureChannel(){
  const LN=nativeLN();if(!LN)return;
@@ -304,7 +309,8 @@ async function ensurePerm(){
  try{let p=await LN.checkPermissions();if(p.display!=='granted'){p=await LN.requestPermissions();}return p.display==='granted';}
  catch(e){rlog('warn','permission check failed: '+e);return false;}
 }
-// 알림 id 대역: 100~999=리셋 예약(매번 다시 깔림), 1000+=단발 알림(PC 알림·테스트)
+// Alert id ranges: 100-999 are reset schedules, rewritten each time, and 1000+ are
+// one-off alerts such as PC alerts and tests.
 const RESET_ID_MIN=100, RESET_ID_MAX=999;
 let lastSchedSig='';
 async function scheduleLocalNotifs(agents,force){
@@ -314,7 +320,8 @@ async function scheduleLocalNotifs(agents,force){
    .map(a=>({name:(a.name||''),at:num(a.block.reset)*1000}));
  const sig=(enabled?'1':'0')+'|'+(localStorage.rf_sound||'1')+(localStorage.rf_vibe||'1')+'|'+items.map(i=>i.name+i.at).join(',');
  if(!force&&sig===lastSchedSig)return; lastSchedSig=sig;
- // 리셋 예약만 걷어낸다. 단발 알림(1000+)까지 지우면 방금 띄우려던 PC 알림이 사라진다.
+ // Clear only the reset schedules. Cancelling the one-offs too would drop a PC alert
+// that is about to be shown.
  try{const pend=(await LN.getPending()).notifications||[];
   const mine=pend.filter(n=>n.id>=RESET_ID_MIN&&n.id<=RESET_ID_MAX).map(n=>({id:n.id}));
   if(mine.length)await LN.cancel({notifications:mine});}catch(_){}
@@ -323,7 +330,8 @@ async function scheduleLocalNotifs(agents,force){
  if(!await ensurePerm()){rlog('warn','no notification permission - scheduling cancelled');return;}
  await ensureChannel();
  let id=RESET_ID_MIN;
- // allowWhileIdle: Doze(절전) 중에도 발화. 이게 빠지면 앱 닫힌 채 폰 잠들면 안 울린다.
+ // allowWhileIdle fires during Doze. Without it a sleeping phone with the app closed
+ // stays silent.
  const notifs=items.map(i=>({id:id++,title:i.name+' refueled',body:'Your 5-hour usage limit has reset.',
    channelId:CH,schedule:{at:new Date(i.at),allowWhileIdle:true}}));
  try{
@@ -332,10 +340,11 @@ async function scheduleLocalNotifs(agents,force){
   rlog('info','scheduled '+notifs.length+' local alert(s) ('+pend+' pending) · reset '+new Date(items[0].at).toLocaleString());
  }catch(e){rlog('error','local alert scheduling failed: '+(e&&e.message||e));}
 }
-// PC가 '지금' 보낸 알림(테스트·업데이트)을 앱이 켜져 있을 때 받아 띄운다.
-// 리셋 알림은 폰이 직접 예약해 울리므로(PC 꺼져도 도착) 여기선 건너뛴다 — 안 그러면 두 번 울린다.
+// Shows alerts the PC sent just now, such as tests and update notices, while the app
+// is open. Reset alerts are skipped because the phone schedules those itself and would
+// otherwise ring twice.
 const ALERT_SEEN='rf_alert_seen', LIVE_TAG='refuel-live';
-const alertState={ok:null};   // 실패 로그 스팸 방지(상태가 바뀔 때만 기록)
+const alertState={ok:null};   // only log on a state change, to avoid spam
 async function showNow(title,body){
  const LN=nativeLN();
  if(LN){
@@ -359,25 +368,25 @@ async function pollAlerts(){
    let m;try{m=JSON.parse(ln)}catch(_){continue}
    if(m.event!=='message')continue;
    const t=num(m.time); if(t>maxT)maxT=t;
-   if(first||t<=seen)continue;                       // 첫 실행은 기준만 잡고 과거를 다시 울리지 않는다
-   if(!(m.tags||[]).includes(LIVE_TAG))continue;     // 예약 리셋 알림은 폰이 따로 울림
+   if(first||t<=seen)continue;                       // the first run only sets the watermark, so history is not replayed
+   if(!(m.tags||[]).includes(LIVE_TAG))continue;     // scheduled reset alerts are rung by the phone itself
    fresh.push(m);
   }
   if(maxT>seen)localStorage[ALERT_SEEN]=String(maxT);
   alertState.ok=true;
   for(const m of fresh)await showNow(m.title||'Refuel',m.message||'');
- }catch(e){   // 오프라인이면 30초마다 쌓여 진단 로그를 밀어내므로 상태가 바뀔 때만 기록
+ }catch(e){   // Offline this would pile up every 30s and push useful entries out of the log.
   if(alertState.ok!==false){rlog('warn','PC alert check failed: '+(e&&e.message||e));alertState.ok=false;}
  }
 }
-// ---- 알림 진단 (리셋까지 5시간 기다리지 않고 지금 확인) ----
+// ---- Alert diagnostics, so nothing has to wait five hours for a real reset ----
 async function exactAlarmState(){
  const LN=nativeLN();if(!LN||!LN.checkExactNotificationSetting)return null;
  try{return (await LN.checkExactNotificationSetting()).exact_alarm;}catch(e){return null;}
 }
 async function notifDiag(){
  const LN=nativeLN();
- if(!LN)return 'Only available in the native app (currently running on web).';
+ if(!LN)return 'Only available in the native app. This is the web version.';
  let perm='?',exact='?',pend=[];
  try{perm=(await LN.checkPermissions()).display;}catch(_){}
  exact=await exactAlarmState()||'?';
@@ -386,7 +395,7 @@ async function notifDiag(){
  const when=resets.map(n=>{const t=n.schedule&&n.schedule.at;return t?new Date(t).toLocaleString():'?';});
  return [
   'Notifications: '+(perm==='granted'?'allowed ✅':perm+' ❌'),
-  'Exact alarms: '+(exact==='granted'?'allowed ✅':'off ⚠ (alerts can be delayed by tens of minutes)'),
+  'Exact alarms: '+(exact==='granted'?'allowed ✅':'off ⚠ alerts can be delayed by tens of minutes'),
   'Scheduled reset alerts: '+resets.length+(when.length?' → '+when.join(', '):''),
   'One-off alerts pending: '+(pend.length-resets.length)
  ].join('\n');
@@ -398,12 +407,13 @@ async function selfTest(btn){
  await ensureChannel();
  const at=new Date(Date.now()+60000);
  try{
-  // 리셋 알림과 '완전히 같은 방식'으로 1분 뒤에 건다 → 앱을 꺼도 오는지 1분이면 확인 가능
+  // Scheduled exactly like a reset alert but one minute out, so closing the app proves
+  // the real thing in a minute.
   await LN.schedule({notifications:[{id:9999,title:'Refuel scheduled test',
     body:'If this arrived with the app closed, reset alerts will arrive too.',
     channelId:CH,schedule:{at,allowWhileIdle:true}}]});
   rlog('info','scheduled test in 1 min: '+at.toLocaleTimeString());
-  if(btn)btn.textContent='Scheduled · '+at.toLocaleTimeString()+' (now close the app completely)';
+  if(btn)btn.textContent='Scheduled for '+at.toLocaleTimeString()+'. Now close the app completely.';
  }catch(e){rlog('error','scheduled test failed: '+(e&&e.message||e));alert('Failed: '+(e&&e.message||e));}
 }
 async function testNotif(btn){
@@ -420,7 +430,7 @@ async function testNotif(btn){
  }else alert('This environment does not support notifications.');
 }
 
-// ---- 설정 패널 (우상단 ⚙) ----
+// ---- Settings panel, opened from the gear ----
 function toggleRow(label,key){
  const on=(localStorage[key]||'1')!=='0';
  return `<label style="display:flex;justify-content:space-between;align-items:center;padding:12px 2px;border-top:1px solid var(--bd)">
@@ -432,21 +442,21 @@ function openSettings(){
  ov.style.cssText='position:fixed;inset:0;background:var(--bg);z-index:9998;overflow:auto;padding:max(16px,env(safe-area-inset-top)) 16px 40px';
  ov.innerHTML=`<div class="top"><div class="brand">Settings</div><button id="setclose" style="background:none;border:0;color:var(--tx);font-size:22px">✕</button></div>
   <div class="setup"><b>Connection</b><br>Status: ${PAIRED?'<span style="color:var(--acc)">Connected</span>':'<span style="color:var(--warn)">Not connected</span>'}
-   <button id="s_scan" style="width:100%;margin-top:8px">📷 Scan again (connect / change)</button>
+   <button id="s_scan" style="width:100%;margin-top:8px">📷 Scan again</button>
    ${PAIRED?'<button id="s_unpair" style="width:100%">Disconnect</button>':''}</div>
   <div class="setup"><b>Alerts</b>${toggleRow('Receive alerts','rf_notif')}${toggleRow('Sound','rf_sound')}${toggleRow('Vibration','rf_vibe')}
-   <button id="s_test" style="width:100%;margin-top:8px">Test alert (right now)</button>
-   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">Your phone rings the alert itself at reset time — it works even when the PC is off.</span></div>
+   <button id="s_test" style="width:100%;margin-top:8px">Send a test alert</button>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">Your phone rings the alert itself at reset time, so it works even when the PC is off.</span></div>
   <div class="setup"><b>🔎 Alert diagnostics</b>
    <div id="diagbox" style="background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:11px;white-space:pre-wrap;line-height:1.6">Checking…</div>
    <button id="s_exact" style="width:100%;margin-top:8px;display:none">Allow exact alarms</button>
-   <button id="s_selftest" style="width:100%">⏱ Schedule an alert in 1 minute (test with the app closed)</button>
-   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">Scheduled <b>exactly like</b> a reset alert. Close the app completely and wait one minute.</span>
+   <button id="s_selftest" style="width:100%">⏱ Schedule an alert 1 minute from now</button>
+   <span style="color:var(--mut);font-size:11px;display:block;margin-top:6px">This is scheduled exactly like a reset alert. Close the app completely and wait one minute.</span>
    <span style="color:var(--warn);font-size:11px;display:block;margin-top:6px">⚠ Nothing arrived? Set <b>Settings → Apps → Refuel → Battery → Unrestricted</b>. Samsung, Xiaomi and others kill scheduled alerts to save power.</span></div>
   <div class="setup"><b>🩺 Diagnostic log</b>
    <div id="logbox" style="max-height:150px;overflow:auto;background:var(--track);border-radius:8px;padding:8px;margin-top:8px;font-size:10px;font-family:Consolas,monospace;white-space:pre-wrap"></div>
    <button id="logshare">Share</button> <button id="logcopy">Copy</button> <button id="logclear">Clear</button></div>
-  ${PAIRED?`<div class="setup"><b>Advanced</b><br><span style="color:var(--mut);font-size:11px">Also receive via the ntfy app (optional). Topic: <code>${esc(T)}-a</code></span> <button id="cpbtn">Copy</button></div>`:''}
+  ${PAIRED?`<div class="setup"><b>Advanced</b><br><span style="color:var(--mut);font-size:11px">Topic, if you also want it in the ntfy app: <code>${esc(T)}-a</code></span> <button id="cpbtn">Copy</button></div>`:''}
   <div class="setup"><button id="s_demo" style="width:100%">🎬 View demo</button></div>`;
  document.body.append(ov);
  $('#setclose').onclick=()=>ov.remove();
@@ -464,7 +474,7 @@ function openSettings(){
  const ex=$('#s_exact');if(ex)ex.onclick=async()=>{
   const LN=nativeLN();if(!LN||!LN.changeExactNotificationSetting)return;
   try{await LN.changeExactNotificationSetting();}catch(e){rlog('warn','exact alarm setting failed: '+e);}
-  if(state)await scheduleLocalNotifs(state.agents,true);   // 허용됐으면 정확 알람으로 다시 건다
+  if(state)await scheduleLocalNotifs(state.agents,true);   // reschedule as an exact alarm once granted
   refreshDiag();
  };
  const stb=$('#s_selftest');if(stb)stb.onclick=async()=>{await selfTest(stb);refreshDiag();};
@@ -493,7 +503,7 @@ async function poll(){
     const m=JSON.parse(lines[i]);
     if(m.event==='message'){state=await decrypt(m.message);lastFetch=Date.now();
      applyTheme(state.accent);break}
-   }catch(e){bad++/* 복호화 실패(위조/구버전) → 무시 */}
+   }catch(e){bad++/* undecryptable: forged or an old version, ignore */}
   }
   if(bad&&!pollState.badLogged){rlog('warn','ignored '+bad+' undecryptable message(s) (key mismatch or old version) - re-pairing may be needed');pollState.badLogged=true}
   if(state&&!pollState.ok){rlog('info','received PC status ('+(state.agents||[]).length+' agent(s))');pollState.ok=true}
@@ -501,7 +511,7 @@ async function poll(){
   if(state)scheduleLocalNotifs(state.agents);
   const age=state?Math.round((Date.now()/1000)-num(state.ts)):null;
   $('#meta').innerHTML=state?(age>1200?`<span class="stale">PC replied ${Math.round(age/60)}m ago</span>`:`synced ${new Date(lastFetch).toLocaleTimeString()} 🔒`):'Waiting';
- }catch(e){$('#meta').textContent='Connection failed (offline?)';
+ }catch(e){$('#meta').textContent='Connection failed. Offline?';
   if(pollState.ok!==false){rlog('error','relay connection failed: '+(e&&e.message||e));pollState.ok=false}}
 }
 rlog('info','app start · '+(DEMO?'demo':PAIRED?'live':'not connected'));
@@ -509,17 +519,18 @@ rlog('info','app start · '+(DEMO?'demo':PAIRED?'live':'not connected'));
 if(DEMO){state=demoState();render();$('#meta').textContent='Demo';setInterval(tickCount,1000);}
 else{
  render();poll();setInterval(poll,30000);setInterval(tickCount,1000);
- // 알림 폴링은 상태 폴링과 분리한다. 상태(-s)는 키가 있어야 복호화되고 실패하면 예외로
- // 빠지는데, 거기 묶여 있으면 PC가 보낸 알림까지 같이 못 받는다.
+ // Alert polling is kept separate from status polling. Status needs the key to decrypt
+ // and throws on failure, which would otherwise take PC alerts down with it.
  pollAlerts();setInterval(pollAlerts,30000);
 }
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
-// AdMob 배너 — GitHub 배포판에서는 끈다.
-// 테스트 광고는 수익이 0인데 화면만 잡아먹고 "Test Ad"라 고장난 것처럼 보인다.
-// 스토어에 낼 때만 ADS_ENABLED=true 로 바꾸고 실제 광고 단위 ID를 넣는다
-// (개인정보처리방침에 광고 문단 추가 + AD_ID 권한 복원 필요 — android/store-listing.md 참고).
+// AdMob banner, disabled for the GitHub build.
+// Test ads earn nothing, take up screen space and read as broken because they say
+// "Test Ad". For a store release set ADS_ENABLED to true and fill in real ad unit ids,
+// then restore the AD_ID permissions in AndroidManifest.xml and add an advertising
+// section to the privacy policy.
 const ADS_ENABLED=false;
-const AD_UNIT={android:'', ios:''};        // 스토어 배포 시 실제 단위 ID
+const AD_UNIT={android:'', ios:''};        // real ad unit ids for a store release
 document.addEventListener('DOMContentLoaded',async()=>{
  if(!ADS_ENABLED)return;
  const Cap=window.Capacitor;
@@ -531,7 +542,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
  try{
   await AdMob.initialize({});
   await AdMob.showBanner({adId,adSize:'BANNER',position:'BOTTOM_CENTER',margin:0});
-  document.body.style.paddingBottom='60px';   // 배너에 콘텐츠 가림 방지
+  document.body.style.paddingBottom='60px';   // keep the banner from covering content
   rlog('info','AdMob banner requested');
  }catch(e){rlog('error','AdMob failed: '+(e&&e.message||e));}
 });

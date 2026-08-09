@@ -7,7 +7,7 @@ self.addEventListener('activate', e => {
   ).then(() => self.clients.claim()));
 });
 
-// 같은 출처(앱 쉘)만 캐시 - ntfy 폴링(교차 출처)은 절대 캐시하지 않음(항상 최신 상태)
+// Cache same-origin app shell only. Cross-origin ntfy polling is never cached so status stays live.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   let url;

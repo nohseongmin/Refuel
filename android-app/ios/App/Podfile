@@ -17,9 +17,9 @@ end
 
 target 'App' do
   capacitor_pods
-  # AdMob 플러그인 6.2.0은 UMP(동의) 2.x API(UMPConsentStatus 등)를 쓴다.
-  # UMP 3.x는 클래스명이 바뀌어(→ConsentStatus) 컴파일이 깨지므로 2.x로 고정.
-  # (광고 SDK 버전은 플러그인이 =11.3.0으로 이미 고정하므로 건드리지 않는다.)
+  # The AdMob plugin 6.2.0 targets the UMP 2.x consent API such as UMPConsentStatus.
+  # UMP 3.x renamed those classes to ConsentStatus and breaks the build, so it is
+  # pinned to 2.x. The ads SDK version is already pinned to 11.3.0 by the plugin.
   pod 'GoogleUserMessagingPlatform', '~> 2.7'
 end
 

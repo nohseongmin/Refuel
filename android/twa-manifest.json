@@ -1,7 +1,7 @@
 {
   "packageId": "io.github.nohseongmin.refuel",
   "host": "nohseongmin.github.io",
-  "name": "Refuel — AI 토큰 연료 게이지",
+  "name": "Refuel — AI token fuel gauge",
   "launcherName": "Refuel",
   "display": "standalone",
   "themeColor": "#0d0f14",

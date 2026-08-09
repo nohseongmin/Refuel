@@ -8,7 +8,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-        <!-- AdMob 앱 ID — 현재 Google 공식 '테스트' ID. 출시 전 실제 ID로 교체할 것. -->
+        <!-- AdMob app id. This is Google's official test id; ads are disabled in this build. -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-3940256099942544~3347511713"
@@ -39,15 +39,17 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- QR 페어링 스캔용. 카메라는 스캔 순간에만 쓰고 아무것도 저장/전송하지 않음 -->
+    <!-- Only for scanning the pairing QR. Nothing is stored or transmitted. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <!-- 리셋 시각에 정확히 알리기 위한 알람. 이게 없으면 안드로이드 12+에서
-         부정확 알람으로 강등돼 절전(Doze) 중 수십 분까지 밀린다.
-         사용자가 '알람 및 리마인더'에서 켜야 하며, 앱 설정에서 상태 확인/요청 가능. -->
+    <!-- Needed to fire the reset alert on time. Without it Android 12+ silently
+         downgrades to an inexact alarm that Doze can delay by tens of minutes.
+         The user grants it under Alarms and reminders; the app shows the status
+         and a request button in its diagnostics panel. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- 광고 SDK가 끌고 오는 광고 식별자 권한. GitHub 배포판은 광고를 끄므로 병합에서 제거한다.
-         (스토어에 광고를 켜서 낼 때는 이 두 줄을 지워 권한을 되살려야 한다) -->
+    <!-- Advertising ID permissions pulled in by the ads SDK. This build has ads off,
+         so they are removed during manifest merge. Delete these two lines to restore
+         them if ads are ever enabled for a store release. -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
 </manifest>

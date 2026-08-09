@@ -35,5 +35,5 @@ jobs:
           body: |
             Refuel ${{ github.ref_name }} (pre-1.0)
 
-            Windows 단일 실행 파일 — 다운로드 후 더블클릭.
-            서버·계정 연결 없이 로컬 로그만 읽음. (1.0 = 폰 연결)
+            Single-file Windows build. Download and double-click.
+            No server and no account; it only reads local logs.

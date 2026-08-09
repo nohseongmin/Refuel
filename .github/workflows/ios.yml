@@ -1,8 +1,9 @@
 name: ios-build
 
-# 맥 없이 GitHub의 macOS 러너로 iOS 앱을 빌드한다.
-# - 기본: 서명 없는 컴파일 검증(빌드가 되는지 확인 + .app 아티팩트)
-# - 정식 IPA/TestFlight: Apple Developer 인증서를 secrets에 넣어야 함(IOS_GUIDE.md 참고)
+# Builds the iOS app on a GitHub macOS runner, so no Mac of your own is needed.
+# By default this only proves the code compiles, with no signing.
+# A real IPA or TestFlight upload needs Apple Developer certificates in secrets.
+# See IOS_GUIDE.md.
 
 on:
   workflow_dispatch:
@@ -22,17 +23,17 @@ jobs:
         with:
           node-version: "20"
 
-      - name: 웹 자산 번들 + 의존성
+      - name: Bundle web assets and install dependencies
         run: |
           rm -rf www && mkdir -p www && cp -r ../docs/* www/
           npm install
           npx cap sync ios
 
-      - name: CocoaPods 설치
+      - name: Install CocoaPods
         working-directory: android-app/ios/App
         run: pod install
 
-      - name: iOS 빌드 (서명 없이 컴파일 검증)
+      - name: Build iOS without signing
         working-directory: android-app/ios/App
         run: |
           xcodebuild -workspace App.xcworkspace -scheme App \
@@ -40,5 +41,5 @@ jobs:
             -destination generic/platform=iOS \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO clean build
 
-      - name: 결과
-        run: echo "iOS 컴파일 성공 — 코드는 iOS 호환. 정식 배포는 Apple 인증서 필요(IOS_GUIDE.md)."
+      - name: Result
+        run: echo "iOS compile succeeded. Shipping still needs Apple certificates, see IOS_GUIDE.md."

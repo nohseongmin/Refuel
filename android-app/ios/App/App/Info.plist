@@ -46,10 +46,10 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>PC와 연결하는 QR 코드를 스캔할 때만 카메라를 사용합니다. 사진은 저장·전송되지 않습니다.</string>
+	<string>The camera is used only to scan the pairing QR code from your PC. Nothing is stored or sent.</string>
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-3940256099942544~1458002511</string>
 	<key>NSUserTrackingUsageDescription</key>
-	<string>맞춤 광고를 위해 사용됩니다. 허용하지 않아도 앱은 정상 동작합니다.</string>
+	<string>Used only to show ads. The app works fully without allowing it.</string>
 </dict>
 </plist>
