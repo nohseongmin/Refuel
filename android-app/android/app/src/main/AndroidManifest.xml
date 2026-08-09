@@ -8,11 +8,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-        <!-- AdMob app id. This is Google's official test id; ads are disabled in this build. -->
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"
-        />
+        <!-- No ads in this build. If AdMob ever comes back, re-add:
+             <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID"
+                        android:value="YOUR-ADMOB-APP-ID" /> -->
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
@@ -47,9 +45,6 @@
          The user grants it under Alarms and reminders; the app shows the status
          and a request button in its diagnostics panel. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- Advertising ID permissions pulled in by the ads SDK. This build has ads off,
-         so they are removed during manifest merge. Delete these two lines to restore
-         them if ads are ever enabled for a store release. -->
-    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
+    <!-- The ads SDK is no longer a dependency, so no advertising permissions are merged
+         in and none need removing here. -->
 </manifest>

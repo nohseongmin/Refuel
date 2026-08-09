@@ -11,16 +11,15 @@ install! 'cocoapods', :disable_input_output_paths => true
 def capacitor_pods
   pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-  pod 'CapacitorCommunityAdmob', :path => '../../node_modules/@capacitor-community/admob'
   pod 'CapacitorLocalNotifications', :path => '../../node_modules/@capacitor/local-notifications'
 end
 
 target 'App' do
   capacitor_pods
-  # The AdMob plugin 6.2.0 targets the UMP 2.x consent API such as UMPConsentStatus.
-  # UMP 3.x renamed those classes to ConsentStatus and breaks the build, so it is
-  # pinned to 2.x. The ads SDK version is already pinned to 11.3.0 by the plugin.
-  pod 'GoogleUserMessagingPlatform', '~> 2.7'
+  # No ads in this build. If the AdMob plugin returns, also pin the consent SDK:
+  #   pod 'GoogleUserMessagingPlatform', '~> 2.7'
+  # The plugin targets the UMP 2.x API such as UMPConsentStatus, and UMP 3.x renamed
+  # those classes to ConsentStatus, which breaks the build.
 end
 
 post_install do |installer|

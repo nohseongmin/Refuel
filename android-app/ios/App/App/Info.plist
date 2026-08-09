@@ -47,9 +47,7 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>The camera is used only to scan the pairing QR code from your PC. Nothing is stored or sent.</string>
-	<key>GADApplicationIdentifier</key>
-	<string>ca-app-pub-3940256099942544~1458002511</string>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>Used only to show ads. The app works fully without allowing it.</string>
+	<!-- No ads in this build. If AdMob returns, re-add GADApplicationIdentifier and
+	     NSUserTrackingUsageDescription, which iOS requires for ad tracking consent. -->
 </dict>
 </plist>

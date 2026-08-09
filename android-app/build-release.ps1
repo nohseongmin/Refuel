@@ -54,16 +54,16 @@ Write-Host "[4/5] Signing" -ForegroundColor Cyan
 $sec = Get-Content $SECRETS | ConvertFrom-StringData
 $sp = $sec.KEYSTORE_PASSWORD
 $out = "android\app\build\outputs"
-Copy-Item "$out\bundle\release\app-release.aab" ".\Refuel-admob.aab" -Force
+Copy-Item "$out\bundle\release\app-release.aab" ".\Refuel.aab" -Force
 & "$JDK\bin\jarsigner.exe" -keystore $KS -storepass $sp -keypass $sp `
-    -digestalg SHA-256 -sigalg SHA256withRSA "Refuel-admob.aab" refuel | Out-Null
-& "$BT\zipalign.exe" -f -p 4 "$out\apk\release\app-release-unsigned.apk" ".\Refuel-admob.apk"
+    -digestalg SHA-256 -sigalg SHA256withRSA "Refuel.aab" refuel | Out-Null
+& "$BT\zipalign.exe" -f -p 4 "$out\apk\release\app-release-unsigned.apk" ".\Refuel.apk"
 & "$BT\apksigner.bat" sign --ks $KS --ks-pass "pass:$sp" --key-pass "pass:$sp" `
-    --ks-key-alias refuel "Refuel-admob.apk"
+    --ks-key-alias refuel "Refuel.apk"
 
 Write-Host "[5/5] Verifying the packaged code is current" -ForegroundColor Cyan
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [System.IO.Compression.ZipFile]::OpenRead("$root\Refuel-admob.apk")
+$zip = [System.IO.Compression.ZipFile]::OpenRead("$root\Refuel.apk")
 $entry = $zip.Entries | Where-Object { $_.FullName -eq "assets/public/index.html" }
 $reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
 $html = $reader.ReadToEnd(); $reader.Close(); $zip.Dispose()
@@ -71,7 +71,6 @@ $html = $reader.ReadToEnd(); $reader.Close(); $zip.Dispose()
 $checks = @{
     "diagnostic log (rlog)" = $html.Contains("function rlog")
     "log UI (logbox)"      = $html.Contains("logbox")
-    "AdMob banner"         = $html.Contains("showBanner")
     "demo mode"            = $html.Contains("demoState")
     "in-app QR scanner"    = $html.Contains("function startScan")
     "grass and streaks"    = $html.Contains("function grassHTML")
@@ -80,16 +79,16 @@ $checks = @{
 }
 # Without the exact-alarm permission, Android 12+ silently delays reset alerts, so the
 # build fails here rather than shipping it.
-$perm = & "$BT\aapt2.exe" dump badging "Refuel-admob.apk" 2>$null | Select-String "SCHEDULE_EXACT_ALARM"
+$perm = & "$BT\aapt2.exe" dump badging "Refuel.apk" 2>$null | Select-String "SCHEDULE_EXACT_ALARM"
 $checks["exact alarm permission"] = [bool]$perm
 $fail = $false
 foreach ($k in $checks.Keys) {
     if ($checks[$k]) { Write-Host "  OK   $k" -ForegroundColor Green }
     else { Write-Host "  FAIL $k" -ForegroundColor Red; $fail = $true }
 }
-& "$BT\aapt2.exe" dump badging "Refuel-admob.apk" 2>$null | Select-String "targetSdkVersion"
+& "$BT\aapt2.exe" dump badging "Refuel.apk" 2>$null | Select-String "targetSdkVersion"
 
 if ($fail) { Write-Host "`nVerification failed. The APK does not contain the latest code." -ForegroundColor Red; exit 1 }
-Get-ChildItem Refuel-admob.aab, Refuel-admob.apk |
+Get-ChildItem Refuel.aab, Refuel.apk |
     ForEach-Object { "{0,-20} {1,8:N2} MB" -f $_.Name, ($_.Length / 1MB) }
-Write-Host "`nBuild complete. Store bundle: Refuel-admob.aab / sideload: Refuel-admob.apk" -ForegroundColor Green
+Write-Host "`nBuild complete. Sideload: Refuel.apk / store bundle: Refuel.aab" -ForegroundColor Green

@@ -524,15 +524,20 @@ else{
  pollAlerts();setInterval(pollAlerts,30000);
 }
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
-// AdMob banner, disabled for the GitHub build.
-// Test ads earn nothing, take up screen space and read as broken because they say
-// "Test Ad". For a store release set ADS_ENABLED to true and fill in real ad unit ids,
-// then restore the AD_ID permissions in AndroidManifest.xml and add an advertising
-// section to the privacy policy.
-const ADS_ENABLED=false;
-const AD_UNIT={android:'', ios:''};        // real ad unit ids for a store release
+/* AdMob banner. Removed from the build, kept here so it can come back.
+   This release ships from GitHub with no ads, and shipping an unused ads SDK would
+   contradict the privacy policy, so the dependency is gone rather than just disabled.
+
+   To restore:
+     1. npm i @capacitor-community/admob   (then npx cap sync)
+     2. AndroidManifest.xml: re-add the com.google.android.gms.ads.APPLICATION_ID meta-data
+     3. ios/App/Podfile and ios Info.plist: re-add the AdMob pod, GADApplicationIdentifier
+        and NSUserTrackingUsageDescription
+     4. Add an advertising section to docs/privacy.html
+     5. Uncomment the block below and fill in real ad unit ids
+
+const AD_UNIT={android:'', ios:''};
 document.addEventListener('DOMContentLoaded',async()=>{
- if(!ADS_ENABLED)return;
  const Cap=window.Capacitor;
  if(!Cap||!Cap.isNativePlatform||!Cap.isNativePlatform()){rlog('info','running on web - no ads');return}
  const AdMob=Cap.Plugins&&Cap.Plugins.AdMob;
@@ -542,8 +547,9 @@ document.addEventListener('DOMContentLoaded',async()=>{
  try{
   await AdMob.initialize({});
   await AdMob.showBanner({adId,adSize:'BANNER',position:'BOTTOM_CENTER',margin:0});
-  document.body.style.paddingBottom='60px';   // keep the banner from covering content
+  document.body.style.paddingBottom='60px';
   rlog('info','AdMob banner requested');
  }catch(e){rlog('error','AdMob failed: '+(e&&e.message||e));}
 });
+*/
 </script></body></html>

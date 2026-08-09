@@ -2,12 +2,11 @@
   "name": "refuel-app",
   "version": "1.0.0",
   "private": true,
-  "description": "Refuel Android app (Capacitor + AdMob)",
+  "description": "Refuel Android app (Capacitor)",
   "devDependencies": {
     "@capacitor/cli": "^6.0.0"
   },
   "dependencies": {
-    "@capacitor-community/admob": "^6.0.0",
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0",
     "@capacitor/ios": "^6.2.1",

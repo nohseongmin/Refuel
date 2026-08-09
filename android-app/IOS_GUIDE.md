@@ -44,11 +44,12 @@ Once you have an Apple account:
 
 ## Ads on iOS
 
-Ads are **disabled** in this release. If you enable them later:
+There are **no ads** in this release and the AdMob SDK is not a dependency. If you add it back:
 
-- `GADApplicationIdentifier` in Info.plist is currently the **iOS test app id**. Register a real iOS app in AdMob and replace it.
-- iOS requires **App Tracking Transparency** consent for ad tracking. `NSUserTrackingUsageDescription` is already present.
-- Set `ADS_ENABLED` to true in `docs/index.html` and fill in the real ad unit ids.
+- Reinstall the plugin, then re-add the pod and the `GoogleUserMessagingPlatform` pin in `Podfile`
+- Add `GADApplicationIdentifier` to Info.plist with a real iOS app id from AdMob
+- Add `NSUserTrackingUsageDescription`, which iOS requires for App Tracking Transparency
+- Uncomment the banner block at the bottom of `docs/index.html` and fill in real ad unit ids
 
 ## Suggested order
 
