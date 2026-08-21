@@ -171,7 +171,7 @@ def _pick_font(root):
     except Exception:
         return "Malgun Gothic"
     for p in ("D2Coding", "NanumGothicCoding", "Nanum Gothic Coding",
-              "Sarasa Mono K", "Malgun Gothic", "\ub9d1\uc740 \uace0\ub515", "Consolas"):   # last one is the Korean name of Malgun Gothic
+              "Sarasa Mono K", "Malgun Gothic", "\ub9d1\uc740 \uace0\ub515", "Consolas"):   # "\ub9d1\uc740 \uace0\ub515" is the Korean name of Malgun Gothic; Consolas is the final fallback
         if p in fams:
             return p
     return "Malgun Gothic"
