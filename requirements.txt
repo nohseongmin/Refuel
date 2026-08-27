@@ -1,4 +1,5 @@
-# Runtime extras. Refuel still works without them; only the tray icon and toasts go away.
+# Runtime extras. Refuel still works without them; you lose the tray icon, native
+# toasts, the pairing QR image (the link still works), and encrypted phone-sync status.
 pystray>=0.19
 pillow>=10.0
 winotify>=1.1.0
