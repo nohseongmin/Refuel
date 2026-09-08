@@ -298,6 +298,9 @@ def _scan():
                 if evs:
                     detected[agent_id] = spec["name"]
                 for e in evs:
+                    # Dedup by message id so one message that appears in more than one file
+                    # (resumed sessions, overlapping log dirs) is not counted twice. Id-less
+                    # events fall back to object identity, so every one of them is kept.
                     merged[e["id"] or id(e)] = e
     return sorted(merged.values(), key=lambda e: e["ts"]), detected
 
