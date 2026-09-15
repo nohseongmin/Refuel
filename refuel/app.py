@@ -767,6 +767,8 @@ class RefuelApp:
         e_hour.insert(0, str(cfg["weekly_reset_hour"]))
         e_hour.pack(side="left", padx=8, ipady=4)
         _lbl(wkrow, ":00", bg=BG).pack(side="left")
+        hour_err = _lbl(win, "", size=8, fg=theme()["warn"], bg=BG)
+        hour_err.pack(anchor="w", pady=(2, 0))
 
         tray_var = tk.BooleanVar(value=cfg["minimize_to_tray"])
         auto_var = tk.BooleanVar(value=cfg["autostart"])
@@ -801,10 +803,15 @@ class RefuelApp:
 
         def save():
             try:
-                cfg["weekly_reset_dow"] = _WD.index(dow_var.get())
-                cfg["weekly_reset_hour"] = max(0, min(23, int(e_hour.get())))
+                hour = int(e_hour.get())
+                if not 0 <= hour <= 23:
+                    raise ValueError
             except ValueError:
-                pass
+                hour_err.config(text="Weekly reset hour must be 0-23.")
+                return
+            hour_err.config(text="")
+            cfg["weekly_reset_dow"] = _WD.index(dow_var.get())
+            cfg["weekly_reset_hour"] = hour
             cfg["minimize_to_tray"] = tray_var.get()
             cfg["sync_enabled"] = sync_var.get()
             cfg["check_updates"] = upd_var.get()
