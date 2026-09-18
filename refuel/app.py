@@ -783,8 +783,7 @@ class RefuelApp:
         syncrow.pack(fill="x", pady=(10, 0))
         _chk(syncrow, "Phone sync: send alerts and status to your phone", sync_var).pack(side="left")
         _btn(syncrow, "Pair with QR",
-             lambda: (cfg.__setitem__("sync_enabled", True), sync_var.set(True),
-                      core.save_config(), self._open_qr())).pack(side="right", ipadx=8, ipady=2)
+             lambda: (sync_var.set(True), self._open_qr())).pack(side="right", ipadx=8, ipady=2)
 
         _lbl(win, "Accent color", bg=BG).pack(anchor="w", pady=(12, 2))
         accrow = tk.Frame(win, bg=BG)
