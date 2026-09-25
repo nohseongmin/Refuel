@@ -211,7 +211,7 @@ def _parse_claude_file(path, agent):
                     # The 5-hour window starts the moment you send the message. Anchoring on the
                     # assistant reply pushes the reset estimate later the slower the reply is,
                     # so user messages are recorded as zero-token activity to pin the start.
-                    if '"type":"user"' in line:
+                    if re.search(r'"type"\s*:\s*"user"', line):
                         m = _TS_RE.search(line)
                         dt = _parse_iso_utc(m.group(1)) if m else None
                         if dt is not None:
