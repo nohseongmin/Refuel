@@ -221,7 +221,11 @@ def _parse_claude_file(path, agent):
                     obj = json.loads(line)
                 except Exception:
                     continue
+                if not isinstance(obj, dict):
+                    continue
                 msg = obj.get("message") or {}
+                if not isinstance(msg, dict):
+                    continue
                 usage = msg.get("usage")
                 if not isinstance(usage, dict):
                     continue
