@@ -1,4 +1,4 @@
-"""Regression check for Claude user-message window anchors."""
+"""Regression checks for Claude log parsing and user-message window anchors."""
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,5 +29,26 @@ def test_claude_user_message_whitespace():
             assert blocks[0]["tokens"] == 15, separators
 
 
+def test_claude_invalid_record_structure():
+    reply = {"type": "assistant", "timestamp": "2026-01-01T10:05:00Z",
+             "message": {"id": "reply", "usage": {"input_tokens": 10, "output_tokens": 5}}}
+    invalid_records = [
+        ["usage"],
+        {"message": ["usage"]},
+        {"message": "usage"},
+        {"message": 1, "usage": {}},
+    ]
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "session.jsonl"
+        for record in invalid_records:
+            path.write_text("\n".join(json.dumps(message) for message in (record, reply)),
+                            encoding="utf-8")
+            events = _parse_claude_file(path, "claude-code")
+            assert len(events) == 1, record
+            assert events[0]["id"] == "reply", record
+            assert events[0]["total"] == 15, record
+
+
 if __name__ == "__main__":
     test_claude_user_message_whitespace()
+    test_claude_invalid_record_structure()
