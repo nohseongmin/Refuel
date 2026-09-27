@@ -193,9 +193,6 @@ def _parse_iso_utc(ts):
     return dt
 
 
-_TS_RE = re.compile(r'"timestamp"\s*:\s*"([^"]+)"')
-
-
 def _event(ts, agent, inp=0, out=0, cache=0, eid=None):
     """One event. The rule that total is the sum of the three counts lives only here."""
     return {"ts": ts, "agent": agent, "inp": inp, "out": out, "cache": cache,
@@ -207,15 +204,20 @@ def _parse_claude_file(path, agent):
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                if '"usage"' not in line:
-                    # The 5-hour window starts the moment you send the message. Anchoring on the
-                    # assistant reply pushes the reset estimate later the slower the reply is,
-                    # so user messages are recorded as zero-token activity to pin the start.
-                    if re.search(r'"type"\s*:\s*"user"', line):
-                        m = _TS_RE.search(line)
-                        dt = _parse_iso_utc(m.group(1)) if m else None
+                # The 5-hour window starts the moment you send the message. Anchoring on the
+                # assistant reply pushes the reset estimate later the slower the reply is,
+                # so user messages are recorded as zero-token activity to pin the start.
+                if re.search(r'"type"\s*:\s*"user"', line):
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if isinstance(obj, dict) and obj.get("type") == "user":
+                        dt = _parse_iso_utc(obj.get("timestamp"))
                         if dt is not None:
                             events.append(_event(dt, agent))
+                        continue
+                if '"usage"' not in line:
                     continue
                 try:
                     obj = json.loads(line)

@@ -29,6 +29,23 @@ def test_claude_user_message_whitespace():
             assert blocks[0]["tokens"] == 15, separators
 
 
+def test_claude_user_message_containing_usage():
+    messages = [
+        {"type": "user", "timestamp": "2026-01-01T10:00:00Z",
+         "message": {"content": [{"usage": "quoted prompt field"}]}},
+        {"type": "assistant", "timestamp": "2026-01-01T10:05:00Z",
+         "message": {"id": "reply", "usage": {"input_tokens": 10, "output_tokens": 5}}},
+    ]
+    start = datetime(2026, 1, 1, 10, tzinfo=timezone.utc)
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "session.jsonl"
+        path.write_text("\n".join(json.dumps(message) for message in messages), encoding="utf-8")
+        events = _parse_claude_file(path, "claude-code")
+        assert len(events) == 2
+        assert events[0]["ts"] == start
+        assert _compute_blocks(events)[0]["start"] == start
+
+
 def test_claude_invalid_record_structure():
     reply = {"type": "assistant", "timestamp": "2026-01-01T10:05:00Z",
              "message": {"id": "reply", "usage": {"input_tokens": 10, "output_tokens": 5}}}
@@ -51,4 +68,5 @@ def test_claude_invalid_record_structure():
 
 if __name__ == "__main__":
     test_claude_user_message_whitespace()
+    test_claude_user_message_containing_usage()
     test_claude_invalid_record_structure()
