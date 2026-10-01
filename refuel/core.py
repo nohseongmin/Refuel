@@ -193,6 +193,11 @@ def _parse_iso_utc(ts):
     return dt
 
 
+def _token_count(value):
+    """Token counts are non-negative integers; malformed log values count as zero."""
+    return value if type(value) is int and value >= 0 else 0
+
+
 def _event(ts, agent, inp=0, out=0, cache=0, eid=None):
     """One event. The rule that total is the sum of the three counts lives only here."""
     return {"ts": ts, "agent": agent, "inp": inp, "out": out, "cache": cache,
@@ -234,11 +239,11 @@ def _parse_claude_file(path, agent):
                 dt = _parse_iso_utc(obj.get("timestamp"))
                 if dt is None:
                     continue
-                cache = ((usage.get("cache_creation_input_tokens", 0) or 0) +
-                         (usage.get("cache_read_input_tokens", 0) or 0))
+                cache = (_token_count(usage.get("cache_creation_input_tokens")) +
+                         _token_count(usage.get("cache_read_input_tokens")))
                 events.append(_event(dt, agent,
-                                     usage.get("input_tokens", 0) or 0,
-                                     usage.get("output_tokens", 0) or 0,
+                                     _token_count(usage.get("input_tokens")),
+                                     _token_count(usage.get("output_tokens")),
                                      cache, msg.get("id") or obj.get("uuid")))
     except Exception as e:
         log.warning("parse failed %s: %s", path, e)
@@ -267,9 +272,9 @@ def _parse_codex_file(path, agent):
                 if dt is None:
                     continue
                 events.append(_event(dt, agent,
-                                     usage.get("input_tokens", 0) or 0,
-                                     usage.get("output_tokens", 0) or 0,
-                                     usage.get("cached_input_tokens", 0) or 0))
+                                     _token_count(usage.get("input_tokens")),
+                                     _token_count(usage.get("output_tokens")),
+                                     _token_count(usage.get("cached_input_tokens"))))
     except Exception as e:
         log.warning("codex parse failed %s: %s", path, e)
     return events
