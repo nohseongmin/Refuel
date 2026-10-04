@@ -101,11 +101,27 @@ python run.py
 
 ```bash
 cd android-app
-npm install
+npm ci
 powershell -ExecutionPolicy Bypass -File build-release.ps1
 ```
 
 Signing paths come from `JAVA_HOME` / `ANDROID_HOME` / `REFUEL_KEYSTORE`, so no machine-specific paths are baked into the repo.
+
+The signing password file is selected with `REFUEL_KEYSTORE_SECRETS`. The password is
+passed to signing tools through a temporary environment variable. Keep both signing
+files outside Git.
+
+Release PRs build Windows and Android and verify the APK contains the current phone
+dashboard. Matching `vX.Y.Z` tags publish `Refuel.exe` and `SHA256SUMS.txt` automatically.
+The Android CI artifact is unsigned: run the signing script locally, then attach
+`Refuel.apk`, `Refuel.aab` and their checksums to the same release. Never distribute
+the unsigned artifact as the installable release.
+
+Capacitor CLI is pinned to the tested 6.2.1 build tool. Its transitive `tar` dependency
+still has npm high/critical advisories; runtime dependencies pass `npm audit --omit=dev`.
+The newer CLI requires an Android build-system migration, which is deferred. Build
+with the committed lockfile and bundled platform templates; do not extract untrusted
+archives with this development dependency.
 
 ---
 

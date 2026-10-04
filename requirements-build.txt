@@ -1,0 +1,6 @@
+pystray==0.19.5
+pillow==12.2.0
+winotify==1.1.0
+qrcode==8.2
+cryptography==49.0.0
+pyinstaller==6.21.0

@@ -21,12 +21,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Bundle web assets and install dependencies
         run: |
           rm -rf www && mkdir -p www && cp -r ../docs/* www/
-          npm install
+          npm ci
           npx cap sync ios
 
       - name: Install CocoaPods
