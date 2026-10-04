@@ -1,7 +1,7 @@
 ﻿# Refuel Android release build, including signing.
 #
 # Careful: editing docs/ then running gradle alone leaves the old screen inside the APK.
-#          Capacitor only copies www to android/app/src/main/assets/public on `cap copy`.
+#          Capacitor sync copies www and generates the native plugin project.
 #          This script enforces that order and verifies the packaged APK really has the
 #          latest code before reporting success.
 #
@@ -40,33 +40,52 @@ if (-not (Test-Path $KS)) { throw "Keystore not found: $KS" }
 if (-not (Test-Path $SECRETS)) { throw "Keystore password file not found: $SECRETS" }
 
 Write-Host "`n[1/5] Bundling web assets (docs -> www)" -ForegroundColor Cyan
+New-Item -ItemType Directory -Path www -Force | Out-Null
 Copy-Item "..\docs\*" www -Recurse -Force
 
 Write-Host "[2/5] Capacitor sync (www -> android assets)" -ForegroundColor Cyan
-npx cap copy android | Out-Null
+npx cap sync android | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Capacitor sync failed." }
 
 Write-Host "[3/5] Gradle release build" -ForegroundColor Cyan
 Push-Location android
-& ".\gradlew.bat" bundleRelease assembleRelease --no-daemon | Select-Object -Last 3
-Pop-Location
+try {
+    & ".\gradlew.bat" bundleRelease assembleRelease --no-daemon | Select-Object -Last 3
+    if ($LASTEXITCODE -ne 0) { throw "Gradle release build failed." }
+} finally { Pop-Location }
 
 Write-Host "[4/5] Signing" -ForegroundColor Cyan
 $sec = Get-Content $SECRETS | ConvertFrom-StringData
 $sp = $sec.KEYSTORE_PASSWORD
+if (-not $sp) { throw "Keystore password is missing." }
 $out = "android\app\build\outputs"
 Copy-Item "$out\bundle\release\app-release.aab" ".\Refuel.aab" -Force
-& "$JDK\bin\jarsigner.exe" -keystore $KS -storepass $sp -keypass $sp `
-    -digestalg SHA-256 -sigalg SHA256withRSA "Refuel.aab" refuel | Out-Null
-& "$BT\zipalign.exe" -f -p 4 "$out\apk\release\app-release-unsigned.apk" ".\Refuel.apk"
-& "$BT\apksigner.bat" sign --ks $KS --ks-pass "pass:$sp" --key-pass "pass:$sp" `
-    --ks-key-alias refuel "Refuel.apk"
+$env:REFUEL_SIGNING_PASSWORD = $sp
+try {
+    & "$JDK\bin\jarsigner.exe" -keystore $KS -storepass:env REFUEL_SIGNING_PASSWORD -keypass:env REFUEL_SIGNING_PASSWORD `
+        -digestalg SHA-256 -sigalg SHA256withRSA "Refuel.aab" refuel | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Bundle signing failed." }
+    & "$BT\zipalign.exe" -f -p 4 "$out\apk\release\app-release-unsigned.apk" ".\Refuel.apk"
+    if ($LASTEXITCODE -ne 0) { throw "APK alignment failed." }
+    & "$BT\apksigner.bat" sign --ks $KS --ks-pass env:REFUEL_SIGNING_PASSWORD --key-pass env:REFUEL_SIGNING_PASSWORD `
+        --ks-key-alias refuel "Refuel.apk"
+    if ($LASTEXITCODE -ne 0) { throw "APK signing failed." }
+    & "$BT\apksigner.bat" verify "Refuel.apk"
+    if ($LASTEXITCODE -ne 0) { throw "APK signature verification failed." }
+} finally { Remove-Item Env:\REFUEL_SIGNING_PASSWORD -ErrorAction SilentlyContinue }
 
 Write-Host "[5/5] Verifying the packaged code is current" -ForegroundColor Cyan
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead("$root\Refuel.apk")
-$entry = $zip.Entries | Where-Object { $_.FullName -eq "assets/public/index.html" }
-$reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
-$html = $reader.ReadToEnd(); $reader.Close(); $zip.Dispose()
+try {
+    $entry = $zip.GetEntry("assets/public/index.html")
+    if (-not $entry) { throw "Web assets are missing from the APK." }
+    $reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
+    try { $html = $reader.ReadToEnd() } finally { $reader.Dispose() }
+} finally { $zip.Dispose() }
+if ($html -cne [System.IO.File]::ReadAllText((Join-Path $parent 'docs\index.html'))) {
+    throw "Packaged web assets differ from docs/index.html."
+}
 
 $checks = @{
     "diagnostic log (rlog)" = $html.Contains("function rlog")

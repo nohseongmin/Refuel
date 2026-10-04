@@ -1,0 +1,110 @@
+name: Windows build and release
+
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-build.txt
+      - run: python test_core.py
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python -c "import os, refuel; assert os.environ['RELEASE_TAG'] == 'v' + refuel.__version__"
+      - run: python -m PyInstaller --noconfirm --onefile --windowed --name Refuel --collect-all pystray --collect-all PIL --collect-all winotify --collect-all qrcode run.py
+      - name: Collect executable
+        run: |
+          New-Item -ItemType Directory out | Out-Null
+          Copy-Item dist/Refuel.exe out/
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          Get-ChildItem out -File | Get-FileHash -Algorithm SHA256 | ForEach-Object {
+            "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))"
+          } | Set-Content -Encoding ascii out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-windows
+          path: out/*
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: android-app/package-lock.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Sync current web assets
+        working-directory: android-app
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          mkdir -p www
+          cp -r ../docs/* www/
+          npx cap sync android
+      - name: Build Android without signing
+        working-directory: android-app/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+      - name: Verify packaged page
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          with ZipFile('android-app/android/app/build/outputs/apk/release/app-release-unsigned.apk') as apk:
+              assert apk.read('assets/public/index.html').decode('utf-8-sig') == Path('docs/index.html').read_text(encoding='utf-8-sig')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-unsigned
+          path: android-app/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          path: out
+          merge-multiple: true
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cd out
+          sha256sum -c SHA256SUMS.txt
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" * --clobber
+          else
+            gh release create "$RELEASE_TAG" * --verify-tag --generate-notes --draft
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false
