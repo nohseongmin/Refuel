@@ -66,6 +66,21 @@ def test_claude_invalid_record_structure():
             assert events[0]["total"] == 15, record
 
 
+def test_codex_invalid_record_structure():
+    reply = {"timestamp": "2026-01-01T10:05:00Z",
+             "payload": {"info": {"last_token_usage": {"input_tokens": 10, "output_tokens": 5}}}}
+    invalid_records = [["token"], "token"]
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "session.jsonl"
+        for record in invalid_records:
+            path.write_text("\n".join(json.dumps(message) for message in (record, reply)),
+                            encoding="utf-8")
+            events = _parse_codex_file(path, "codex")
+            assert len(events) == 1, record
+            assert events[0]["ts"] == datetime(2026, 1, 1, 10, 5, tzinfo=timezone.utc), record
+            assert events[0]["total"] == 15, record
+
+
 def test_malformed_token_counts_do_not_truncate_log():
     claude_messages = [
         {"type": "assistant", "timestamp": "2026-01-01T10:00:00Z",
@@ -98,4 +113,5 @@ if __name__ == "__main__":
     test_claude_user_message_whitespace()
     test_claude_user_message_containing_usage()
     test_claude_invalid_record_structure()
+    test_codex_invalid_record_structure()
     test_malformed_token_counts_do_not_truncate_log()

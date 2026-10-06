@@ -263,6 +263,8 @@ def _parse_codex_file(path, agent):
                     obj = json.loads(line)
                 except Exception:
                     continue
+                if not isinstance(obj, dict):
+                    continue
                 payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else obj
                 info = payload.get("info") if isinstance(payload.get("info"), dict) else None
                 usage = info.get("last_token_usage") if isinstance(info, dict) else None
