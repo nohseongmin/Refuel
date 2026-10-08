@@ -201,7 +201,7 @@ def _token_count(value):
 def _event(ts, agent, inp=0, out=0, cache=0, eid=None):
     """One event. The rule that total is the sum of the three counts lives only here."""
     return {"ts": ts, "agent": agent, "inp": inp, "out": out, "cache": cache,
-            "total": inp + out + cache, "id": eid}
+            "total": inp + out + cache, "id": eid if isinstance(eid, str) else None}
 
 
 def _parse_claude_file(path, agent):
