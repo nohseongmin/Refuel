@@ -1,168 +1,97 @@
-# ⛽ Refuel
+# Refuel
 
-> **A fuel gauge for AI coding agents** — see how many tokens you've burned, when your limit refuels, and get told the moment it does.
+A Windows usage monitor for AI coding agents, with an optional phone dashboard and reset alerts. It reads local agent logs and estimates when usage windows reset.
 
-[![Release](https://img.shields.io/github/v/release/nohseongmin/Refuel?label=release&color=46e08a)](https://github.com/nohseongmin/Refuel/releases/latest)
-[![Windows](https://img.shields.io/badge/Windows-10%2F11-5a8dee)](https://github.com/nohseongmin/Refuel/releases/latest)
-[![Android](https://img.shields.io/badge/Android-7%2B-46e08a)](https://github.com/nohseongmin/Refuel/releases/latest)
-[![License](https://img.shields.io/badge/license-MIT-f5c451)](LICENSE)
+[Download](https://github.com/nohseongmin/Refuel/releases/latest).
 
-You hit the limit, you wait — and then you forget exactly when it comes back. Refuel remembers for you and tells you the moment it's free.
+## Features
 
-Every day you use it also gets planted on a **contribution-graph style calendar**, so you can see your streak at a glance.
-
----
-
-## ✨ Features
-
-| | |
+| Feature | Behavior |
 |---|---|
-| 🌱 **Grass & streaks** | 16 weeks of daily usage, GitHub-style. Days shade from dark to bright in 5 steps depending on how much you used. Shows your current and best streak (PC + phone) |
-| ⏳ **Refuel countdown** | Live countdown to the 5-hour rolling window reset, with the exact reset time |
-| 📅 **Weekly limit tracking** | If the 5-hour window is free but the weekly limit is the bottleneck, the card switches to a weekly countdown automatically |
-| 🔔 **Alerts that matter** | Only two: 5-hour reset and weekly reset. Your phone rings them **even when the PC is off** |
-| 🤖 **Agent auto-discovery** | Finds your agent logs by itself — no paths to configure (Claude Code supported, Codex experimental) |
-| 📊 **Usage dashboard** | Current window (input / output / cache split) · today · this week · last 7 days |
-| 🎯 **Limit estimation** | Learns your limit from your own past usage — nothing to enter |
-| 🎨 **One-color theming** | Pick an accent and *everything* follows — alerts, warnings, grass, bars. Your phone picks up the same color automatically |
-| 🖥️ **Lives in the tray** | Close to tray, hover for the countdown, right-click to quit. Single instance — launching again just brings the window back |
+| Usage history | Sixteen weeks of daily usage, with five intensity levels and current or best streaks. |
+| Reset countdown | A five-hour window countdown and exact estimated reset time. |
+| Weekly limits | Switches to the weekly countdown when that is the active constraint. |
+| Phone alerts | Local alerts for five-hour and weekly resets, even after the PC turns off. |
+| Log discovery | Finds Claude Code logs automatically; Codex support is experimental. |
+| Dashboard | Input, output, and cache counts for the current window, today, week, and last seven days. |
+| Limit estimate | Learns a ceiling from recorded usage. |
+| Theme | Shared accent color across the PC and phone interfaces. |
+| Tray | Close to tray, countdown tooltip, and a single running instance. |
 
----
+## Installation
 
-## 📥 Install
+### Windows
 
-### Windows (the collector)
+Download `Refuel.exe` and run it. No installer or administrator rights are needed. The binary is unsigned and may trigger SmartScreen. You can also [build from source](#building).
 
-1. Download **`Refuel.exe`** from the [latest release](https://github.com/nohseongmin/Refuel/releases/latest)
-2. Double-click it. That's it — no installer, no admin rights.
+### Android
 
-> Windows SmartScreen may warn you because the binary isn't code-signed (signing certificates cost money). Click **More info → Run anyway**, or [build it yourself](#-build-from-source).
+Download `Refuel.apk` from the release, allow installation from that source, and open the app. On the PC, open Settings and choose Pair with QR; scan the code on the phone.
 
-### Android (optional, for phone alerts)
+### iPhone and other devices
 
-1. Download **`Refuel.apk`** from the same release
-2. Allow "install from unknown sources" when prompted
-3. Open the app → **Scan QR to connect**
-4. On the PC: **⚙ → Pair with QR**, then scan it
+Open [the phone dashboard](https://nohseongmin.github.io/Refuel/) in Safari and add it to the Home Screen. Background alerts on iOS are limited; see [MANUAL.md](docs/MANUAL.md).
 
-### iPhone / anything else
+Usage normally appears within about 20 seconds of activity. The local monitor needs no API keys, account, or login. Phone sync is optional.
 
-Open <https://nohseongmin.github.io/Refuel/> in Safari and **Add to Home Screen**. The dashboard works as a web app; background push is limited on iOS (see [MANUAL.md](docs/MANUAL.md)).
+See [INSTALL.md](docs/INSTALL.md) for setup and [MANUAL.md](docs/MANUAL.md) for the full guide.
 
----
+## Privacy
 
-## 🚀 Quick start
+By default, Refuel makes no network calls. It reads local log files for token counts and timestamps, without collecting code or prompts. Configuration, history, and logs live in `~/.refuel/`.
 
-```
-1. Run Refuel.exe          → it finds your agent logs automatically
-2. Use your AI agent       → usage appears within ~20 seconds
-3. (optional) ⚙ → Phone sync → Pair with QR → scan on your phone
-```
+Opt-in phone sync sends token counts, timestamps, and agent names. Status payloads use AES-GCM encryption, so the ntfy.sh relay receives ciphertext. The channel uses a 166-bit random secret topic, and the encryption key is transferred in the QR URL fragment. The topic and key can be regenerated.
 
-There is nothing else to configure. No API keys, no account, no login.
+The Android app requests camera access for QR scanning and exact alarms for reset notifications.
 
-Full walkthrough: **[INSTALL.md](docs/INSTALL.md)** · Everything else: **[MANUAL.md](docs/MANUAL.md)**
+See [DISCLAIMER.md](DISCLAIMER.md) and [the privacy policy](https://nohseongmin.github.io/Refuel/privacy.html).
 
----
+## Building
 
-## 🔒 Privacy
+Windows, from Command Prompt:
 
-- **By default Refuel makes no network calls.** Everything stays on your PC.
-- It only **reads** your local log files, and only counts **tokens and timestamps** — never your code or prompts.
-- Stored in `~/.refuel/` (`config.json`, `history.db`, `refuel.log`).
-- **Phone sync is opt-in and off by default.** When you turn it on:
-  - What leaves your PC: token counts, timestamps, agent names. Nothing else.
-  - The status payload is **end-to-end encrypted (AES-GCM)** — the relay (ntfy.sh) only ever sees ciphertext, and the GCM tag blocks forged status injection.
-  - The channel is a **166-bit random secret topic**. The encryption key is passed **only in the QR fragment (`#`)**, which browsers never send to any server.
-  - One click regenerates the topic and key if you think it leaked.
-- The Android app additionally asks for **camera** (QR scanning only) and **exact alarms** (so reset alerts fire on time).
-
-Full text: [DISCLAIMER.md](DISCLAIMER.md) · [Privacy policy](https://nohseongmin.github.io/Refuel/privacy.html)
-
----
-
-## 🛠 Build from source
-
-**Windows app:**
-
-```bash
+```bat
 pip install -r requirements.txt pyinstaller
 python -m PyInstaller --noconfirm --onefile --windowed --name Refuel ^
   --collect-all pystray --collect-all PIL --collect-all winotify --collect-all qrcode run.py
 ```
 
-Or just run it directly:
+To run the source directly:
 
 ```bash
 python run.py
 ```
 
-**Android app** (needs JDK 17 + Android SDK):
+Android requires JDK 17 and the Android SDK:
 
-```bash
+```powershell
 cd android-app
 npm ci
 powershell -ExecutionPolicy Bypass -File build-release.ps1
 ```
 
-Signing paths come from `JAVA_HOME` / `ANDROID_HOME` / `REFUEL_KEYSTORE`, so no machine-specific paths are baked into the repo.
+Signing uses `JAVA_HOME`, `ANDROID_HOME`, `REFUEL_KEYSTORE`, and `REFUEL_KEYSTORE_SECRETS`. Passwords are passed through a temporary environment variable. Keep signing files outside Git.
 
-The signing password file is selected with `REFUEL_KEYSTORE_SECRETS`. The password is
-passed to signing tools through a temporary environment variable. Keep both signing
-files outside Git.
+Release PRs build both platforms and check that the APK contains the current dashboard. Matching `vX.Y.Z` tags publish `Refuel.exe` and `SHA256SUMS.txt`. Android CI produces an unsigned artifact; sign it locally and attach `Refuel.apk`, `Refuel.aab`, and checksums to the release.
 
-Release PRs build Windows and Android and verify the APK contains the current phone
-dashboard. Matching `vX.Y.Z` tags publish `Refuel.exe` and `SHA256SUMS.txt` automatically.
-The Android CI artifact is unsigned: run the signing script locally, then attach
-`Refuel.apk`, `Refuel.aab` and their checksums to the same release. Never distribute
-the unsigned artifact as the installable release.
+The tested Capacitor CLI is pinned to 6.2.1. Its transitive `tar` build dependency has high/critical advisories, while runtime dependencies pass `npm audit --omit=dev`. An Android build-system migration is deferred. Use the committed lockfile and platform templates, and do not process untrusted archives with that dependency.
 
-Capacitor CLI is pinned to the tested 6.2.1 build tool. Its transitive `tar` dependency
-still has npm high/critical advisories; runtime dependencies pass `npm audit --omit=dev`.
-The newer CLI requires an Android build-system migration, which is deferred. Build
-with the committed lockfile and bundled platform templates; do not extract untrusted
-archives with this development dependency.
+## Implementation
 
----
-
-## 🧱 How it works
-
-```
-~/.claude/projects/**/*.jsonl        ← agent logs (read-only)
-        │
-        ▼
-  refuel/core.py     parse → 5-hour window blocks → limit estimate → grass
-        │
-        ├── refuel/app.py    Tk tray app (Windows)
-        │
-        └── refuel/sync.py   AES-GCM encrypt → ntfy relay (opt-in)
-                                    │
-                                    ▼
-                            docs/index.html    phone dashboard (PWA / Capacitor)
+```text
+Agent JSONL logs       Read-only input
+refuel/core.py         Parse logs, group windows, estimate limits, build history
+refuel/app.py          Windows tray interface
+refuel/sync.py         Encrypt and relay optional phone sync
+docs/index.html       Phone dashboard, PWA, and Capacitor interface
 ```
 
-The 5-hour window is anchored to **the moment you sent the message**, not when the reply finished — otherwise a slow first response pushes the whole reset estimate late.
+The five-hour window is anchored to when a message was sent, so a slow response does not shift the estimate.
 
----
+The ceiling is inferred from the largest completed usage window observed on the account; it is not an exact plan quota. The estimate becomes more useful after a limit has been reached.
 
-## ❓ FAQ
+Phones schedule alerts locally using their last sync. On Android, exact alarms and unrestricted battery mode may be needed. The app is distributed through GitHub releases rather than the Play Store.
 
-**Does it show my exact plan limit?**
-No, and nothing can — Anthropic doesn't publish a token quota. Refuel estimates your ceiling from the largest completed window it has actually seen on your account, which is why the percentage becomes meaningful only after you've bumped into the limit once.
+## License
 
-**Do alerts arrive when my PC is off?**
-Yes. Your phone schedules the alert locally the last time it synced, so the PC doesn't need to be awake. Turn on **exact alarms** in the app's diagnostics, and set the battery mode to unrestricted — aggressive power saving on some devices kills scheduled alerts.
-
-**Does it work with agents other than Claude Code?**
-Codex support is experimental. Adding another agent is a small entry in the `AGENTS` registry in `refuel/core.py` — PRs welcome.
-
-**Is it on the Play Store?**
-No. Install the APK from the releases page.
-
----
-
-## 📄 License
-
-MIT — see [LICENSE](LICENSE).
-
-Refuel is an unofficial tool and is not affiliated with Anthropic, OpenAI, Cursor, or any other company.
+[MIT](LICENSE). Refuel is an unofficial tool and is not affiliated with Anthropic, OpenAI, Cursor, or other companies.
