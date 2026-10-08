@@ -3,8 +3,10 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
-from refuel.core import _compute_blocks, _parse_claude_file, _parse_codex_file
+from refuel.core import (AGENTS, _cache, _compute_blocks, _parse_claude_file,
+                         _parse_codex_file, _scan)
 
 
 def test_claude_user_message_whitespace():
@@ -109,9 +111,36 @@ def test_malformed_token_counts_do_not_truncate_log():
         assert [event["total"] for event in codex_events] == [0, 5]
 
 
+def test_scan_malformed_message_ids():
+    messages = []
+    for field in ("id", "uuid"):
+        for value in (["invalid"], {"invalid": True}, True, 1):
+            message = {"type": "assistant", "timestamp": "2026-01-01T10:05:00Z",
+                       "message": {"usage": {"input_tokens": 10, "output_tokens": 5}}}
+            if field == "id":
+                message["message"][field] = value
+            else:
+                message[field] = value
+            messages.append(message)
+    reply = {"type": "assistant", "timestamp": "2026-01-01T10:05:00Z",
+             "message": {"id": "valid", "usage": {"input_tokens": 10, "output_tokens": 5}}}
+    messages.extend([reply, reply])
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "session.jsonl"
+        path.write_text("\n".join(json.dumps(message) for message in messages), encoding="utf-8")
+        agent = {"name": "Claude Code", "dirs": lambda: [Path(directory)],
+                 "glob": "**/*.jsonl", "parser": _parse_claude_file}
+        with patch.dict(AGENTS, {"claude-code": agent}, clear=True), patch.dict(_cache, clear=True):
+            events, detected = _scan()
+        assert len(events) == len(messages) - 1
+        assert sum(event["total"] for event in events) == 15 * (len(messages) - 1)
+        assert detected == {"claude-code": "Claude Code"}
+
+
 if __name__ == "__main__":
     test_claude_user_message_whitespace()
     test_claude_user_message_containing_usage()
     test_claude_invalid_record_structure()
     test_codex_invalid_record_structure()
     test_malformed_token_counts_do_not_truncate_log()
+    test_scan_malformed_message_ids()
