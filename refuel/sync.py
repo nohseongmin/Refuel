@@ -195,17 +195,13 @@ def post_state(state):
     if not enabled():
         return
     now = datetime.now().timestamp()
-    sig_src = [(a["id"],
-                (a["block"]["start"].isoformat() if a["block"] else None),
-                int((a["block"]["ratio"] or 0) * 10) if a["block"] else -1)
-               for a in state.get("agents", [])]
-    # Count a colour change as a change too, or the phone theme lags until the next heartbeat.
-    sig = json.dumps([core.CONFIG.get("accent"), sig_src], default=str)
+    payload = _compact(state)
+    sig = json.dumps([payload["accent"], payload["agents"]], sort_keys=True)
     if sig == _last_post["sig"] and (now - _last_post["ts"]) < HEARTBEAT_SEC:
         return
     if not _HAVE_AES:
         log.warning("cryptography module missing - status upload stopped (never sent in plaintext)")
         return
     _last_post.update(ts=now, sig=sig)
-    _fire({"topic": topic() + "-s", "message": _encrypt(_compact(state)),
+    _fire({"topic": topic() + "-s", "message": _encrypt(payload),
            "priority": 1})
