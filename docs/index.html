@@ -229,17 +229,17 @@ function agentCardsHTML(agents){
  if(!agents.length)return `<div class="setup">No agents detected yet. Use an AI tool on your PC and it will show up here.</div>`;
  return agents.map(a=>{
   const name=esc(a.name||a.id||'?');
-  let count='Refueled',col='var(--acc)',prog=0,ratio=null,sub='No active window · ready to go';
+  let count='Refueled',col='var(--acc)',prog=0,ratio=null,reset='',sub='No active window · ready to go';
   const bReset=a.block?num(a.block.reset):0, wkReset=(a.wk&&a.wk.reset)?num(a.wk.reset):0;
   const wkRatio=(a.wk&&a.wk.ratio!=null)?num(a.wk.ratio):null;
   if(a.block&&bReset>now){
    const rem=bReset-now;ratio=a.block.ratio==null?null:num(a.block.ratio);
    col=(ratio!=null&&ratio>=0.8)?'var(--dng)':(rem<=1800?'var(--warn)':'var(--acc)');
-   count=dur(rem);prog=Math.min(1,(WINDOW_SEC-rem)/WINDOW_SEC);
+   count=dur(rem);reset=bReset;prog=Math.min(1,(WINDOW_SEC-rem)/WINDOW_SEC);
    const t=new Date(bReset*1000);
    sub=`5h reset ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')} · window ${fmtN(a.block.tok)} tokens`+(ratio!=null?` · est. ${Math.round(ratio*100)}%`:'');
   }else if(wkRatio!=null&&wkRatio>=0.8&&wkReset>now){
-   const rem=wkReset-now;col='var(--dng)';count=dur(rem);prog=1-rem/WEEK_SEC;
+   const rem=wkReset-now;col='var(--dng)';count=dur(rem);reset=wkReset;prog=1-rem/WEEK_SEC;
    sub='Weekly limit reached - waiting for reset';
   }
   let wkline='';
@@ -253,7 +253,7 @@ function agentCardsHTML(agents){
    return `<div class="drow"><div class="dl">${lbl}</div><div class="dt"><div class="df" style="width:${(d[1]/mx*100).toFixed(0)}%"></div></div><div class="dv">${fmtS(d[1])}</div></div>`}).join('');
   // The grass is the centrepiece: full width right under the countdown, figures below.
   return `<div class="card"><div class="aname"><span>${name}</span></div>
-   <div class="count" style="color:${col}" data-reset="${a.block?bReset:''}">${count}</div>
+   <div class="count" style="color:${col}" data-reset="${reset}">${count}</div>
    ${grassHTML(a.streak)}
    <div class="sub">${sub}</div><div class="bar"><div class="fill" style="width:${(prog*100).toFixed(1)}%;background:${col}"></div></div>
    <div class="sub">Today ${fmtN(a.today)} tokens</div>
