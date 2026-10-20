@@ -137,6 +137,35 @@ def test_scan_malformed_message_ids():
         assert detected == {"claude-code": "Claude Code"}
 
 
+def test_scan_removes_deleted_log_cache():
+    with TemporaryDirectory() as directory:
+        paths = [Path(directory) / name for name in ("active.jsonl", "removed.jsonl")]
+        for path in paths:
+            message = {"type": "assistant", "timestamp": "2026-01-01T10:05:00Z",
+                       "message": {"id": path.stem, "usage": {"input_tokens": 10}}}
+            path.write_text(json.dumps(message), encoding="utf-8")
+        agent = {"name": "Claude Code", "dirs": lambda: [Path(directory)],
+                 "glob": "**/*.jsonl", "parser": _parse_claude_file}
+        with patch.dict(AGENTS, {"claude-code": agent}, clear=True), patch.dict(_cache, clear=True):
+            events, detected = _scan()
+            assert len(events) == 2
+            assert len(_cache) == 2
+            active_cache = _cache[str(paths[0])]
+
+            paths[1].unlink()
+            events, detected = _scan()
+            assert len(events) == 1
+            assert events[0]["id"] == "active"
+            assert events[0]["total"] == 10
+            assert detected == {"claude-code": "Claude Code"}
+            assert list(_cache) == [str(paths[0])]
+            assert _cache[str(paths[0])] is active_cache
+
+            paths[0].unlink()
+            assert _scan() == ([], {})
+            assert not _cache
+
+
 if __name__ == "__main__":
     test_claude_user_message_whitespace()
     test_claude_user_message_containing_usage()
@@ -144,3 +173,4 @@ if __name__ == "__main__":
     test_codex_invalid_record_structure()
     test_malformed_token_counts_do_not_truncate_log()
     test_scan_malformed_message_ids()
+    test_scan_removes_deleted_log_cache()
