@@ -294,9 +294,11 @@ AGENTS = {
 def _scan():
     merged = {}
     detected = {}
+    live = set()
     for agent_id, spec in AGENTS.items():
         for d in spec["dirs"]():
             for p in glob.glob(str(d / spec["glob"]), recursive=True):
+                live.add(p)
                 try:
                     st = os.stat(p)
                 except OSError:
@@ -315,6 +317,8 @@ def _scan():
                     # (resumed sessions, overlapping log dirs) is not counted twice. Id-less
                     # events fall back to object identity, so every one of them is kept.
                     merged[e["id"] or id(e)] = e
+    for dead in [p for p in _cache if p not in live]:
+        _cache.pop(dead, None)
     return sorted(merged.values(), key=lambda e: e["ts"]), detected
 
 
