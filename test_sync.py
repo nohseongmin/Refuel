@@ -1,4 +1,4 @@
-"""Regression checks for phone status publication on token changes."""
+"""Regression checks for phone status publication and reset alert scheduling."""
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -45,5 +45,32 @@ def test_post_state_token_changes():
             assert fire.call_count == 3
 
 
+def test_rotate_reschedules_current_window():
+    start = datetime(2026, 1, 1, 10, tzinfo=timezone.utc)
+    reset = start + timedelta(hours=5)
+    with patch.dict(sync.core.CONFIG, {"sync_enabled": True, "sync_topic": "old-topic",
+                                      "sync_key": "old-key", "sync_scheduled": {}}), \
+            patch.dict(sync._last_post, {"ts": 0.0, "sig": None}), \
+            patch.object(sync.core, "save_config"), \
+            patch.object(sync, "datetime") as clock, \
+            patch.object(sync.secrets, "token_urlsafe", return_value="rotated"), \
+            patch.object(sync.secrets, "token_hex", return_value="0" * 32), \
+            patch.object(sync, "_fire") as fire:
+        clock.now.return_value = start
+        sync.schedule_refill("codex", "Codex", start, reset)
+        sync.schedule_refill("codex", "Codex", start, reset)
+        assert fire.call_count == 1
+        assert fire.call_args.args[0]["topic"] == "old-topic-a"
+
+        sync.rotate()
+        assert sync.core.CONFIG["sync_scheduled"] == {}
+        sync.schedule_refill("codex", "Codex", start, reset)
+        sync.schedule_refill("codex", "Codex", start, reset)
+        assert fire.call_count == 2
+        assert fire.call_args.args[0]["topic"] == "refuel-rotated-a"
+        assert fire.call_args.args[0]["delay"] == str(int(reset.timestamp()))
+
+
 if __name__ == "__main__":
     test_post_state_token_changes()
+    test_rotate_reschedules_current_window()
