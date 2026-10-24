@@ -69,6 +69,7 @@ def rotate():
     """Reissues topic and key, invalidating every existing pairing and subscription."""
     core.CONFIG["sync_topic"] = ""
     core.CONFIG["sync_key"] = ""
+    core.CONFIG["sync_scheduled"] = {}
     core.save_config()
     _last_post.update(ts=0.0, sig=None)
     return topic(), key()
