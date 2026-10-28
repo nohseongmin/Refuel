@@ -333,7 +333,7 @@ def _compute_blocks(events):
             blocks.append(cur)
             new = True
         if new:
-            cur = {"start": e["ts"].replace(microsecond=0), "last": e["ts"],
+            cur = {"start": e["ts"], "last": e["ts"],
                    "tokens": 0, "inp": 0, "out": 0, "cache": 0}
         cur["tokens"] += e["total"]
         for k in ("inp", "out", "cache"):

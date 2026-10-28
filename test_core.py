@@ -1,6 +1,6 @@
 """Regression checks for agent log parsing and user-message window anchors."""
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -29,6 +29,22 @@ def test_claude_user_message_whitespace():
             assert len(blocks) == 1, separators
             assert blocks[0]["start"] == start, separators
             assert blocks[0]["tokens"] == 15, separators
+
+
+def test_blocks_preserve_subsecond_window_start():
+    window = timedelta(hours=5)
+    for microsecond in (0, 500000, 999999):
+        start = datetime(2026, 1, 1, 10, microsecond=microsecond, tzinfo=timezone.utc)
+        events = [{"ts": start + offset, "total": tokens, "inp": tokens, "out": 0, "cache": 0}
+                  for offset, tokens in ((timedelta(), 0),
+                                         (window - timedelta(microseconds=1), 15),
+                                         (window, 7))]
+        blocks = _compute_blocks(events)
+        assert len(blocks) == 2, microsecond
+        assert blocks[0]["start"] == start, microsecond
+        assert blocks[0]["tokens"] == 15, microsecond
+        assert blocks[1]["start"] == start + window, microsecond
+        assert blocks[1]["tokens"] == 7, microsecond
 
 
 def test_claude_user_message_containing_usage():
@@ -168,6 +184,7 @@ def test_scan_removes_deleted_log_cache():
 
 if __name__ == "__main__":
     test_claude_user_message_whitespace()
+    test_blocks_preserve_subsecond_window_start()
     test_claude_user_message_containing_usage()
     test_claude_invalid_record_structure()
     test_codex_invalid_record_structure()
