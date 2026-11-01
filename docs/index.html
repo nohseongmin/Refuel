@@ -92,7 +92,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
 const P=new URLSearchParams(location.hash.slice(1));
 if(P.get('t')){localStorage.rf_t=P.get('t');if(P.get('k'))localStorage.rf_k=P.get('k');
- if(P.get('sv'))localStorage.rf_sv=P.get('sv');history.replaceState(null,'',location.pathname);}
+ if(P.get('sv'))localStorage.rf_sv=P.get('sv');else delete localStorage.rf_sv;history.replaceState(null,'',location.pathname);}
 const T=localStorage.rf_t, K=localStorage.rf_k, SV=localStorage.rf_sv||'https://ntfy.sh';
 const DEMO = P.get('demo')!==null;   // sample data only on an explicit #demo; unpaired shows the connect screen
 const PAIRED = !!(T && K);
@@ -152,7 +152,7 @@ function applyPairing(text){
  if(!p.get('t')){rlog('warn','QR has no pairing info');alert('That is not a Refuel pairing QR.');return false;}
  localStorage.rf_t=p.get('t');
  if(p.get('k'))localStorage.rf_k=p.get('k');
- if(p.get('sv'))localStorage.rf_sv=p.get('sv');
+ if(p.get('sv'))localStorage.rf_sv=p.get('sv');else delete localStorage.rf_sv;
  rlog('info','paired - reloading');
  location.reload();
  return true;
