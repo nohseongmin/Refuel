@@ -45,6 +45,36 @@ def test_post_state_token_changes():
             assert fire.call_count == 3
 
 
+def test_post_state_weekly_reset_changes():
+    start = datetime(2026, 1, 1, 10, tzinfo=timezone.utc)
+    for has_block in (True, False):
+        agent = {"id": "codex", "name": "Codex", "today_tokens": 100,
+                 "week_tokens": 100,
+                 "block": {"start": start, "reset_at": start + timedelta(hours=5),
+                           "tokens": 100, "ratio": 0.15} if has_block else None,
+                 "weekly": {"reset_at": start + timedelta(days=7), "ratio": 0.2}}
+        state = {"agents": [agent]}
+        with patch.dict(sync.core.CONFIG, {"sync_enabled": True, "sync_topic": "test"}), \
+                patch.dict(sync._last_post, {"ts": 0.0, "sig": None}), \
+                patch.object(sync, "_HAVE_AES", True), \
+                patch.object(sync, "datetime") as clock, \
+                patch.object(sync, "_encrypt", return_value="encrypted") as encrypt, \
+                patch.object(sync, "_fire") as fire:
+            clock.now.return_value = start
+            sync.post_state(state)
+            sync.post_state(state)
+            assert fire.call_count == 1, has_block
+
+            agent["weekly"]["reset_at"] += timedelta(hours=1)
+            sync.post_state(state)
+            assert fire.call_count == 2, has_block
+            payload = encrypt.call_args.args[0]["agents"][0]
+            assert payload["wk"]["reset"] == int(agent["weekly"]["reset_at"].timestamp())
+
+            sync.post_state(state)
+            assert fire.call_count == 2, has_block
+
+
 def test_rotate_reschedules_current_window():
     start = datetime(2026, 1, 1, 10, tzinfo=timezone.utc)
     reset = start + timedelta(hours=5)
@@ -73,4 +103,5 @@ def test_rotate_reschedules_current_window():
 
 if __name__ == "__main__":
     test_post_state_token_changes()
+    test_post_state_weekly_reset_changes()
     test_rotate_reschedules_current_window()
