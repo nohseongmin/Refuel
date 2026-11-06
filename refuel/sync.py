@@ -200,7 +200,8 @@ def post_state(state):
                 (a["block"]["start"].isoformat() if a["block"] else None),
                 int((a["block"]["ratio"] or 0) * 10) if a["block"] else -1,
                 a["block"]["tokens"] if a["block"] else 0,
-                a.get("today_tokens", 0), a.get("week_tokens", 0))
+                a.get("today_tokens", 0), a.get("week_tokens", 0),
+                _epoch((a.get("weekly") or {}).get("reset_at")))
                for a in state.get("agents", [])]
     # Count a colour change as a change too, or the phone theme lags until the next heartbeat.
     sig = json.dumps([core.CONFIG.get("accent"), sig_src], default=str)
