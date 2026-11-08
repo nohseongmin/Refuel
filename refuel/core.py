@@ -490,7 +490,7 @@ def build_state():
     events, detected = _scan()
     clock = _now_clock()
 
-    grouped = {aid: [] for aid in detected}
+    grouped = {aid: [] for aid in AGENTS if aid in detected or _history_daily(aid)}
     for e in events:
         grouped.setdefault(e["agent"], []).append(e)
 
