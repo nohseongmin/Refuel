@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from refuel import core
 from refuel.core import (AGENTS, _cache, _compute_blocks, _parse_claude_file,
                          _parse_codex_file, _scan)
 
@@ -182,6 +183,40 @@ def test_scan_removes_deleted_log_cache():
             assert not _cache
 
 
+def test_build_state_preserves_history_after_log_cleanup():
+    now = datetime(2026, 1, 2, 10, tzinfo=timezone.utc)
+    local = now.astimezone()
+    clock = core._Clock(now, local, local.date(), local - timedelta(days=1),
+                        local + timedelta(days=6))
+    message = {"type": "assistant", "timestamp": (now - timedelta(days=1)).isoformat(),
+               "message": {"id": "reply", "usage": {"input_tokens": 10, "output_tokens": 5}}}
+    with TemporaryDirectory() as directory:
+        path = Path(directory) / "session.jsonl"
+        agent = {"name": "Claude Code", "dirs": lambda: [Path(directory)],
+                 "glob": "**/*.jsonl", "parser": _parse_claude_file}
+        with patch.dict(AGENTS, {"claude-code": agent}, clear=True), patch.dict(_cache, clear=True), \
+                patch.object(core, "CONFIG_DIR", Path(directory)), \
+                patch.object(core, "DB_PATH", Path(directory) / "history.db"), \
+                patch.object(core, "_now_clock", return_value=clock):
+            assert core.build_state() == {"agents": [], "total_events": 0}
+            path.write_text(json.dumps(message), encoding="utf-8")
+            before = core.build_state()
+            assert len(before["agents"]) == 1
+            assert before["agents"][0]["daily"][-2][1] == 15
+            assert before["agents"][0]["streak"]["current"] == 1
+
+            path.unlink()
+            after = core.build_state()
+            assert after["total_events"] == 0
+            assert len(after["agents"]) == 1
+            assert after["agents"][0]["id"] == "claude-code"
+            assert after["agents"][0]["block"] is None
+            assert after["agents"][0]["daily"] == before["agents"][0]["daily"]
+            for key in ("current", "best", "from"):
+                assert after["agents"][0]["streak"][key] == before["agents"][0]["streak"][key]
+            assert after["agents"][0]["streak"]["levels"][-2] != "0"
+
+
 if __name__ == "__main__":
     test_claude_user_message_whitespace()
     test_blocks_preserve_subsecond_window_start()
@@ -191,3 +226,4 @@ if __name__ == "__main__":
     test_malformed_token_counts_do_not_truncate_log()
     test_scan_malformed_message_ids()
     test_scan_removes_deleted_log_cache()
+    test_build_state_preserves_history_after_log_cleanup()
